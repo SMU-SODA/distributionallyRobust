@@ -1,0 +1,143 @@
+// Tolerance level used to differentiate floating point numbers */
+TOLERANCE    0.001
+
+// Minimum iterations
+MIN_ITER   1
+
+// Maximum number of iterations
+MAX_ITER   5000
+
+// Master type: 0 for LP, 1 for MILP, 5 for QP and 7 for MIQP
+MASTER_TYPE 5
+
+// For multicut version set to one, else single cut implementation 
+MULTICUT	0
+
+// OPTIMALITY GAP
+EPSILON 0.001
+
+// ******************** Regularized L-shaped method ********************
+// The Minimum value of the cell->quad_scalar.
+MIN_QUAD_SCALAR 1
+
+// The Maximum value of the cell->quad_scalar.
+MAX_QUAD_SCALAR 10000.0
+
+// Multiplier for the number of cuts; with QP, SD sets this to 1
+CUT_MULT  3
+
+// Amount of improvement which must be observed in order to update incumbent X.
+R1 0.01
+
+// For updating the scaling factor.
+R2 0.95
+
+// For updating the scaling factor.
+R3 2
+
+// ******************** Replicated experiments ********************
+// 1 for multiple replications, 0 for single replication
+MULTIPLE_REP 0
+
+// Run seeds
+RUN_SEED    8879657642464524
+RUN_SEED    3554548844580680
+RUN_SEED    6070772756632709
+RUN_SEED    5451675876709589
+RUN_SEED    5285327724846206
+RUN_SEED    5588857889468088
+RUN_SEED    1098833779416152
+RUN_SEED    6192593982049265
+RUN_SEED    4756774140130874
+RUN_SEED    6784592265109609
+RUN_SEED    9728429908537680
+RUN_SEED    1163479388309571
+RUN_SEED    3279282318700126
+RUN_SEED    8773753208032360
+RUN_SEED    9337302665697748
+RUN_SEED    4415169667296773
+RUN_SEED    4220432037464045
+RUN_SEED    3554548844580680
+RUN_SEED    1814300451929103
+RUN_SEED    5339672949292608
+RUN_SEED    5638710736762732
+RUN_SEED    3154245808720589
+RUN_SEED    2414929536171258
+RUN_SEED    7998609999427572
+RUN_SEED    7080145164625719
+RUN_SEED    3648862740490586
+RUN_SEED    7772725003305823
+RUN_SEED    5982768791029230
+RUN_SEED    1395182510837913
+RUN_SEED    3735836402047426
+
+// Indicate whether to employ (by setting equal to 1) evaluation of the eventual solution
+EVAL_FLAG 0
+
+// Solution tolerance for deciding the usage of mean solution.
+EVAL_MIN_ITER 250
+
+// Obj. eval. is accurate to within this much, w/95% confidence
+EVAL_ERROR 0.01
+
+// Random number seed for resampling omegas during evaluation
+EVAL_SEED	4650175399072632
+EVAL_SEED	4317459304174907
+EVAL_SEED	1499740298834250
+EVAL_SEED	8272809468603661
+EVAL_SEED	9321928632105101
+EVAL_SEED	8879657642464524
+EVAL_SEED	1646307759053034
+EVAL_SEED	1397125657640682
+EVAL_SEED	3146928660304649
+EVAL_SEED	6086062973158789
+EVAL_SEED	4261811376433110
+EVAL_SEED	5160431490422796
+EVAL_SEED	7210299483505433
+EVAL_SEED	2742341912700425
+EVAL_SEED	1085010081252686
+EVAL_SEED	8513449869606798
+EVAL_SEED	7093281297971938
+EVAL_SEED	7988825411001281
+EVAL_SEED	4183664541491746
+EVAL_SEED	3145719174690472
+EVAL_SEED	7565122826024890
+EVAL_SEED	5245385869406164
+EVAL_SEED	2209547377191484
+EVAL_SEED	9707622650545090
+EVAL_SEED	3276474213926122
+EVAL_SEED	3808908035978675
+EVAL_SEED	7200786232249811
+EVAL_SEED	3531095045851544
+EVAL_SEED	8536356961121783
+EVAL_SEED	4742397086462006
+ 
+// ******************** Sample Average Approximation ********************
+// Set to (1) if sample average approximation is to be constructed
+SAA 0
+
+// Number of observations to be used to set the sample average approximation
+MAX_OBS 2500
+
+// ******************** Scenario reduction procedure ********************
+// Use scenario reduction by fraction (1) or number (2). When set to (0) scenario reduction will be switched off.
+SCENRED 0
+
+// Fraction of scenarios after reduction (used when SCENRED = 1)
+REDUCED_FRACTION 0.4
+
+// Number of scenarios after reduction (used when SCENRED = 2) 
+REDUCED_NUMBER	500
+
+// Scenario reduction algorithm to be employed: 1 = Simultaneous backward reduction, or 2 = Fast forward selection
+REDUCE_ALGO 2
+
+// ******************** Subproblem Sampling ********************
+// Use subproblem sampling by fraction (1) or number (2). When set to (0) all the subproblems will be solved to optimality.
+SAMPLED_SP 1
+
+// Sample number
+SAMPLE_NUMBER	1
+
+// Sample fraction
+SAMPLE_FRACTION 0.01
