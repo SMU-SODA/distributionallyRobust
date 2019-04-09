@@ -44,6 +44,8 @@ int readConfig() {
 			fscanf(fptr, "%d", &config.MASTER_TYPE);
 		else if (!(strcmp(line, "EPSILON")))
 			fscanf(fptr, "%lf", &config.EPSILON);
+		else if (!(strcmp(line, "CUT_MULT")))
+			fscanf(fptr, "%d", &config.CUT_MULT);
 
 		else if (!(strcmp(line, "MIN_QUAD_SCALAR")))
 			fscanf(fptr, "%lf", &config.MIN_QUAD_SCALAR);
