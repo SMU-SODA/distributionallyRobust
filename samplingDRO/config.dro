@@ -23,15 +23,6 @@ MAX_QUAD_SCALAR 10000.0
 // Multiplier for the number of cuts; with QP, SD sets this to 1
 CUT_MULT  3
 
-// Amount of improvement which must be observed in order to update incumbent X.
-R1 0.01
-
-// For updating the scaling factor.
-R2 0.95
-
-// For updating the scaling factor.
-R3 2
-
 // ******************** Replicated experiments ********************
 // 1 for multiple replications, 0 for single replication
 MULTIPLE_REP 1
@@ -68,50 +59,9 @@ RUN_SEED    5982768791029230
 RUN_SEED    1395182510837913
 RUN_SEED    3735836402047426
 
-// Indicate whether to employ (by setting equal to 1) evaluation of the eventual solution
-EVAL_FLAG 0
-
-// Solution tolerance for deciding the usage of mean solution.
-EVAL_MIN_ITER 250
-
-// Obj. eval. is accurate to within this much, w/95% confidence
-EVAL_ERROR 0.01
-
-// Random number seed for resampling omegas during evaluation
-EVAL_SEED	4650175399072632
-EVAL_SEED	4317459304174907
-EVAL_SEED	1499740298834250
-EVAL_SEED	8272809468603661
-EVAL_SEED	9321928632105101
-EVAL_SEED	8879657642464524
-EVAL_SEED	1646307759053034
-EVAL_SEED	1397125657640682
-EVAL_SEED	3146928660304649
-EVAL_SEED	6086062973158789
-EVAL_SEED	4261811376433110
-EVAL_SEED	5160431490422796
-EVAL_SEED	7210299483505433
-EVAL_SEED	2742341912700425
-EVAL_SEED	1085010081252686
-EVAL_SEED	8513449869606798
-EVAL_SEED	7093281297971938
-EVAL_SEED	7988825411001281
-EVAL_SEED	4183664541491746
-EVAL_SEED	3145719174690472
-EVAL_SEED	7565122826024890
-EVAL_SEED	5245385869406164
-EVAL_SEED	2209547377191484
-EVAL_SEED	9707622650545090
-EVAL_SEED	3276474213926122
-EVAL_SEED	3808908035978675
-EVAL_SEED	7200786232249811
-EVAL_SEED	3531095045851544
-EVAL_SEED	8536356961121783
-EVAL_SEED	4742397086462006
- 
 // ******************** Sample Average Approximation ********************
 // Set to (1) if sample average approximation is to be constructed
-SAA 0
+SAMPLING_TYPE 0
 
 // Number of observations to be used to set the sample average approximation
 MAX_OBS 1000
@@ -122,3 +72,4 @@ DRO_TYPE 1
 
 // Parameters associated with the ambiguity set
 DRO_PARAM 0.05
+
