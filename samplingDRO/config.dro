@@ -34,7 +34,7 @@ R3 2
 
 // ******************** Replicated experiments ********************
 // 1 for multiple replications, 0 for single replication
-MULTIPLE_REP 0
+MULTIPLE_REP 1
 
 // Run seeds
 RUN_SEED    8879657642464524
