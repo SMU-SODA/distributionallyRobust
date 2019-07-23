@@ -17,6 +17,13 @@
 #include "smps.h"
 #include "prob.h"
 
+#undef SEP_CHECK
+
+enum droType {
+	RISK_NEUTRAL,
+	MOMENT_MATCHING
+}droType;
+
 typedef struct{
 	int		NUM_REPS;			/* Maximum number of replications that can be carried out. */
 	int 	MULTIPLE_REP;		/* When multiple replications are needed, set this to (1), else (0) */
@@ -33,9 +40,21 @@ typedef struct{
 
 	double	MIN_QUAD_SCALAR;	/* Minimum value for regularizing parameter */
 	double 	MAX_QUAD_SCALAR;	/* Maximum value for regularizing parameter */
+	double  R1;
+	double  R2;
+	double  R3;
 
+	int		EVAL_FLAG;
+	long long *EVAL_SEED;
+	int		EVAL_MIN_ITER;
+	double  EVAL_ERROR;
+
+	int		SAA; 				/* Use SAA when continuous distribution in stoch file (1), or not (0) */
 	int		SAMPLING_TYPE;		/* Sampling type 0 (full), 1 (SAA), and 2 (Sequential sampling) */
 	int		MAX_OBS;			/* Maximum number of iterations before which SAA is invoked */
+
+	int		DRO_TYPE;
+	double	DRO_PARAM;
 }configType;
 
 typedef struct {
@@ -105,6 +124,8 @@ typedef struct {
     oneProblem  *master;            /* store master information */
 	oneProblem 	*subprob;			/* store subproblem information */
 
+	oneProblem  *sep;				/* distribution separation problem */
+
 	dVector     candidX;            /* primal solution of the master problem */
 	double      candidEst;          /* objective value master problem */
 
@@ -115,40 +136,50 @@ typedef struct {
 	bool        incumbChg;			/* set to be true if the incumbent solution has changed in an iteration */
 	iVector     iCutIdx;			/* index of incumbent cuts in cell->cuts structure. If multicut is used, there will be one
 	 	 	 	 	 	 	 	 	   for each observation. */
-	dVector		piM;
+	dVector		piM;				/* Dual vector for the master problem (original and the cuts) */
 
     int      	maxCuts;            /* maximum number of cuts to be used*/
 	cutsType    *cuts;              /* optimality cuts */
 
-	bool        optFlag;
+	bool        optFlag;			/* Flag to indicate optimality of a cell */
+	bool		spFeasFlag;			/* Subproblem feasibility flag */
+	bool        infeasIncumb;		/* Indicates if the incumbent solution is infeasible */
 
 	runTime		*time;				/* Run time structure */
 
 	omegaType 	*omega;				/* all realizations observed during the algorithm */
-	lambdaType	*lambda;
-	sigmaType	*sigma;
-	deltaType	*delta;
+	lambdaType	*lambda;			/* Duals corresponding to rows with randomness */
+	sigmaType	*sigma;				/* Deterministic components of cut coefficients */
+	deltaType	*delta;				/* Stochastic components of cut coefficients */
 }cellType;
 
 /* samplingDRO.c */
 void parseCmdLine(int argc, char *argv[], cString *probName, cString *inputDir);
 void printHelpMenu();
+void writeOptimizationStatistics(FILE *soln, FILE *incumb, probType **prob, cellType *cell, int rep);
+void printOptimizationSummary(cellType *cell);
 
 /* setup.c */
 int readConfig();
 int setupAlgo(oneProblem *orig, stocType *stoc, timeType *tim, probType ***prob, cellType **cell, dVector *meanSol);
 cellType *newCell(stocType *stoc, probType **prob, dVector xk);
 int cleanCellType(cellType *cell, probType *prob, dVector xk);
+void freeCellType(cellType *cell);
 
 /* algo.c */
 int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cString probName);
 int solveFixedDROCell(stocType *stoc, probType **prob, cellType *cell);
+bool optimal(cellType *cell);
 
 /* master.c */
+int solveMaster(numType *num, sparseVector *dBar, cellType *cell);
+int checkImprovement(probType *prob, cellType *cell, int candidCut);
+int replaceIncumbent(probType *prob, cellType *cell);
 int constructQP(probType *prob, cellType *cell, dVector incumbX, double quadScalar);
 int changeQPproximal(LPptr lp, int numCols, double sigma, int numEta);
 int changeQPrhs(probType *prob, cellType *cell, dVector xk);
 int changeQPbds(LPptr lp, int numCols, dVector bdl, dVector bdu, dVector xk);
+int addCut2Master(cellType *cell, cutsType *cuts, oneCut *cut, int lenX, int obsID);
 oneProblem *newMaster(oneProblem *orig, double lb, omegaType *omega);
 
 /* subproblem.c */
@@ -162,8 +193,14 @@ int chgRHSwObserv(LPptr lp, numType *num, coordType *coord, dVector observ, dVec
 int chgObjxwObserv(LPptr lp, numType *num, coordType *coord, dVector cost, iVector indices, dVector observ);
 
 /* cuts.c */
+int formOptCut(probType *prob, cellType *cell, dVector Xvect);
 oneCut *newCut(int numX, int currentIter, int numObs);
 cutsType *newCuts(int maxCuts);
+double maxCutHeight(cutsType *cuts, dVector xk, int betaLen, int obsID);
+double cutHeight(oneCut *cut, dVector xk, int betaLen);
+int dropCut(oneProblem *master, cutsType *cuts, int cutIdx, iVector iCutIdx, int obsID);
+int reduceCut(oneProblem *master, cutsType *cuts, dVector vectX, dVector piM, int betaLen, iVector iCutIdx,
+		omegaType *omega, int obsID);
 void freeOneCut(oneCut *cut);
 void freeCutsType(cutsType *cuts, bool partial);
 
@@ -182,5 +219,11 @@ void freeSigmaType (sigmaType *sigma);
 void freeDeltaType (deltaType *delta, int numLambda, int numOmega);
 omegaType *newOmega(stocType *stoc);
 void freeOmegaType(omegaType *omega, bool partial);
+
+/* separation.c */
+int obtainProbDist(oneProblem *sep, dVector probs, dVector spObj, int cnt);
+int updtDistSepProb(oneProblem *sep, dVector spObj, int cnt);
+oneProblem *newDistSepProb(stocType *stoc, omegaType *omega);
+oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMoments);
 
 #endif /* SAMPLINGDRO_H_ */

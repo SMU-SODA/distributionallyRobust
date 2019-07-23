@@ -5,13 +5,10 @@ TOLERANCE    0.001
 MIN_ITER   1
 
 // Maximum number of iterations
-MAX_ITER   5000
+MAX_ITER   100
 
 // Master type: 0 for LP, 1 for MILP, 5 for QP and 7 for MIQP
 MASTER_TYPE 5
-
-// For multicut version set to one, else single cut implementation 
-MULTICUT	0
 
 // OPTIMALITY GAP
 EPSILON 0.001
@@ -117,27 +114,11 @@ EVAL_SEED	4742397086462006
 SAA 0
 
 // Number of observations to be used to set the sample average approximation
-MAX_OBS 2500
+MAX_OBS 1000
 
-// ******************** Scenario reduction procedure ********************
-// Use scenario reduction by fraction (1) or number (2). When set to (0) scenario reduction will be switched off.
-SCENRED 0
+// ******************** Distribution robust parameters ********************
+// Type of ambiguity set: Risk-averse (0), Moment-matching (1)
+DRO_TYPE 1
 
-// Fraction of scenarios after reduction (used when SCENRED = 1)
-REDUCED_FRACTION 0.4
-
-// Number of scenarios after reduction (used when SCENRED = 2) 
-REDUCED_NUMBER	500
-
-// Scenario reduction algorithm to be employed: 1 = Simultaneous backward reduction, or 2 = Fast forward selection
-REDUCE_ALGO 2
-
-// ******************** Subproblem Sampling ********************
-// Use subproblem sampling by fraction (1) or number (2). When set to (0) all the subproblems will be solved to optimality.
-SAMPLED_SP 1
-
-// Sample number
-SAMPLE_NUMBER	1
-
-// Sample fraction
-SAMPLE_FRACTION 0.01
+// Parameters associated with the ambiguity set
+DRO_PARAM 0.05

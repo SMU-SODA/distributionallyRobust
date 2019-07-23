@@ -12,6 +12,52 @@
 #include "samplingDRO.h"
 extern configType config;
 
+/* In this his function the master problem is solved after the newest cut is added to master problem, the incumbent cut is updated if necessary.
+ * Here the coefficients on all the cuts are updated, and finally master problem is solved. */
+int solveMaster(numType *num, sparseVector *dBar, cellType *cell) {
+	int 	status;
+	clock_t	tic;
+
+#if defined(ALGO_CHECK)
+	writeProblem(cell->master->lp,"cellMaster.lp");
+#endif
+
+	tic = clock();
+	/* solve the master problem */
+	if ( solveProblem(cell->master->lp, cell->master->name, config.MASTER_TYPE, &status) ) {
+		writeProblem(cell->master->lp, "error.lp");
+		errMsg("algorithm", "solveMaster", "failed to solve the master problem", 0);
+		return 1;
+	}
+	cell->time->masterIter = ((double) (clock() - tic))/CLOCKS_PER_SEC;
+
+	/* increment the number of problems solved during algorithm */
+	cell->LPcnt++;
+
+	/* Get the most recent optimal solution to master program */
+	if ( getPrimal(cell->master->lp, cell->candidX, num->cols) ) {
+		errMsg("algorithm", "solveMaster", "failed to obtain the primal solution for master", 0);
+		return 1;
+	}
+
+	if ( cell->master->type == PROB_QP ) {
+		/* Get the dual solution too */
+		if ( getDual(cell->master->lp, cell->piM, cell->master->mar) ) {
+			errMsg("solver", "solveQPMaster", "failed to obtain dual solutions to master", 0);
+			return 1;
+		}
+
+		addVectors(cell->candidX, cell->incumbX, NULL, num->cols);
+		cell->candidEst = vXvSparse(cell->candidX, dBar);
+		cell->candidEst += getPrimalPoint(cell->master->lp, num->cols);
+		cell->gamma = cell->candidEst - cell->incumbEst;
+	}
+	else
+		cell->candidEst = getObjective(cell->master->lp, PROB_LP);
+
+	return 0;
+}//END solveMaster()
+
 /* This subroutine initializes the master problem by copying information from the decomposed prob[0](type: oneProblem) and adding a column for
  * theta for modified benders decomposition. */
 oneProblem *newMaster(oneProblem *orig, double lb, omegaType *omega) {
@@ -32,9 +78,9 @@ oneProblem *newMaster(oneProblem *orig, double lb, omegaType *omega) {
 	master->matsz 	= orig->matsz;                   	/* extended matrix size */
 	master->marsz 	= orig->marsz;                   	/* extended row size */
 	master->rstorsz = orig->rstorsz;               		/* memory size for storing row names */
-	master->mac 	= orig->mac + omega->cnt;  				/* number of columns + etas */
-	master->macsz 	= orig->macsz + omega->cnt;				/* extended column size */
-	master->cstorsz = orig->cstorsz + omega->cnt*NAMESIZE;  /* memory size for storing column names */
+	master->mac 	= orig->mac+1;           			/* number of columns + etas */
+	master->macsz 	= orig->macsz + 1;       			/* extended column size */
+	master->cstorsz = orig->cstorsz + NAMESIZE;    		/* memory size for storing column names */
 
 	/* Allocate memory to the information whose type is cString */
 	if (!(master->name = (cString) arr_alloc(NAMESIZE, char)))
@@ -132,22 +178,16 @@ oneProblem *newMaster(oneProblem *orig, double lb, omegaType *omega) {
 		master->rname[r] = orig->rname[r] + rowOffset;
 	}
 
-	/* Initialize information for the extra columns (one for each scenario) in the new master. */
-	char colName[NAMESIZE];
+	/* Initialize information for the extra column in the new master. */
 	colOffset = orig->cstorsz;
-	for ( j = 0; j < omega->cnt; j++ ) {
-		sprintf(colName,"eta_%d", j);
-		strcpy(master->cstore + colOffset, colName);
-		master->cname[orig->mac+j] = master->cstore + colOffset;
-		master->objx[orig->mac+j] = omega->probs[j];
-		master->ctype[orig->mac+j] = 'C';
-		master->bdu[orig->mac+j] = INFBOUND;
-		master->bdl[orig->mac+j] = lb;
-		master->matbeg[orig->mac+j] = orig->numnz;
-		master->matcnt[orig->mac+j] = 0;
-
-		colOffset += strlen(colName) + 1;
-	}
+	strcpy(master->cstore + orig->cstorsz, "eta");
+	master->cname[orig->mac] = master->cstore + colOffset;
+	master->objx[orig->mac] = 1.0;			// orig->mac is the last column in the original master
+	master->ctype[orig->mac] = 'C';
+	master->bdu[orig->mac] = INFBOUND;
+	master->bdl[orig->mac] = lb;
+	master->matbeg[orig->mac] = orig->numnz;	// Beginning point in matval/matind in eta columns. every eta column begins at the same address
+	master->matcnt[orig->mac] = 0;               // Only optimality cuts has eta
 
 	/* Load the copy into CPLEX */
 	master->lp = setupProblem(master->name, master->type, master->mac, master->mar, master->objsen, master->objx, master->rhsx, master->senx, master->matbeg, master->matcnt,master->matind, master->matval, master->bdl, master->bdu, NULL, master->cname, master->rname, master->ctype);
@@ -166,6 +206,56 @@ oneProblem *newMaster(oneProblem *orig, double lb, omegaType *omega) {
 	return master;
 
 }//END newMaster()
+
+int checkImprovement(probType *prob, cellType *cell, int candidCut) {
+
+	/* Calculate height at both the candidate and incumbent solution need to be computed. */
+	cell->candidEst = vXvSparse(cell->candidX, prob->dBar) +
+			maxCutHeight(cell->cuts, cell->candidX, prob->num->cols, 0);
+
+#if defined(ALGO_CHECK)
+	printf("Incumbent estimate = %lf; Candidate estimate = %lf\n", cell->incumbEst, cell->candidEst);
+#endif
+
+	/* If we see considerable improvement, then change the incumbent */
+	if ( (cell->candidEst - cell->incumbEst) <= config.R1*cell->gamma ) {
+		/* when we find an improvement, then we need to replace the incumbent x with candidate x */
+		if ( replaceIncumbent(prob, cell) ) {
+			errMsg("algorithm", "checkImprovement", "failed to replace incumbent solution with candidate", 0);
+			return 1;
+		}
+
+		cell->cuts->vals[cell->iCutIdx[0]]->isIncumb = false;
+		cell->iCutIdx[0] = candidCut;
+		cell->cuts->vals[candidCut]->isIncumb = true;
+
+		cell->incumbChg = false;
+		printf("+"); fflush(stdout);
+	}
+
+	return 0;
+}//END checkImprovement()
+
+int replaceIncumbent(probType *prob, cellType *cell) {
+
+	/* replace the incumbent solution with the candidate solution */
+	copyVector(cell->candidX, cell->incumbX, prob->num->cols, 1);
+	cell->incumbEst = cell->candidEst;
+
+	/* update the right-hand side and the bounds with new incumbent solution */
+	if ( constructQP(prob, cell, cell->incumbX, cell->quadScalar) ) {
+		errMsg("algorithm", "replaceIncumbent", "failed to change the right-hand side after incumbent change", 0);
+		return 1;
+	}
+
+	/* update the candidate cut as the new incumbent cut */
+	cell->incumbChg = true;
+
+	/* Since incumbent solution is now replaced by a candidate, we assume it is feasible now */
+	cell->infeasIncumb = false;
+
+	return 0;
+}//END replaceIncumbent()
 
 int constructQP(probType *prob, cellType *cell, dVector incumbX, double quadScalar) {
 	int status;
@@ -200,7 +290,7 @@ int changeQPproximal(LPptr lp, int numCols, double sigma, int numEta) {
 	/* Construct Q matrix, which is simply a diagonal matrix. */
 	for (n = 0; n < numCols; n++)
 		qsepvec[n] = 0.5 * sigma;
-	for ( n = numCols; n < numCols+numEta; n++ )
+	for ( n = numCols; n < numCols+numEta+1; n++ )
 		qsepvec[n] = 0.0;
 
 	/* Now copy the Q matrix for QP problem. */
@@ -318,3 +408,44 @@ int changeQPbds(LPptr lp, int numCols, dVector bdl, dVector bdu, dVector xk) {
 
 	return 0;
 }//END changeQPbds()
+
+int addCut2Master(cellType *cell, cutsType *cuts, oneCut *cut, int lenX, int obsID) {
+	iVector 	indices;
+	int 	cnt;
+	static int cummCutNum = 0;
+
+	/* If it is optimality cut being added, check to see if there is room for the candidate cut, else drop a cut */
+	if (cuts->cnt == cell->maxCuts) {
+		/* make room for the latest cut */
+		if( reduceCut(cell->master, cuts, cell->candidX, cell->piM, lenX, cell->iCutIdx,
+				cell->omega, obsID) < 0 ) {
+			errMsg("algorithm", "addCut2Master", "failed to add reduce cuts to make room for candidate cut", 0);
+			return -1;
+		}
+	}
+
+	if ( config.MASTER_TYPE == PROB_QP )
+		cut->alphaIncumb = cut->alpha - vXv(cut->beta, cell->incumbX, NULL, lenX);
+
+	if (!(indices = arr_alloc(lenX + 1, int)))
+		errMsg("Allocation", "addcut2Master", "fail to allocate memory to coefficients of beta",0);
+	for (cnt = 1; cnt <= lenX; cnt++)
+		indices[cnt] = cnt - 1;
+	indices[0] = lenX+cut->omegaID;
+
+	/* Add the cut to the cell cuts structure and assign a row number. */
+	cuts->vals[cuts->cnt] = cut;
+	cut->rowNum = cell->master->mar++;
+
+	/* Set up the cut name */
+	sprintf(cut->name, "cut_%04d", cummCutNum++);
+
+	/* Add the row in the solver */
+	if ( addRow(cell->master->lp, lenX + 1, cut->alphaIncumb, GE, 0, indices, cut->beta, cut->name) ) {
+		errMsg("solver", "addcut2Master", "failed to add new row to problem in solver", 0);
+		return -1;
+	}
+
+	mem_free(indices);
+	return cuts->cnt++;
+}//END addCuts2Master()

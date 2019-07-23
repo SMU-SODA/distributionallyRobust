@@ -22,9 +22,6 @@ int main(int argc, char * argv[]) {
 	stocType *stoc = NULL;
 	outputDir = NULL;
 
-	/* open solver environment */
-	openSolver();
-
 	/* read algorithm configuration file */
 	if ( readConfig() )
 		goto TERMINATE;
@@ -38,21 +35,17 @@ int main(int argc, char * argv[]) {
 		goto TERMINATE;
 	}
 
+	/* set up output directory: using the outputDir in config file and the input problem name */
+	createOutputDir(outputDir, "samplingDRO", probName);
+
 	/* launch the algorithm */
 	if ( algo(orig, tim, stoc, inputDir, probName) ) {
 		errMsg("allocation", "main", "failed to solve the problem using 2-SD algorithm", 0);
 		goto TERMINATE;
 	}
 
-	/* set up output directory: using the outputDir in config file and the input problem name */
-	createOutputDir(outputDir, "samplingDRO", probName);
-
-	/* release structures and close solver environment */
 	TERMINATE:
-	freeOneProblem(orig);
-	freeTimeType(tim);
-	freeStocType(stoc);
-	closeSolver();
+	mem_free(inputDir); mem_free(probName); mem_free(outputDir);
 	return 0;
 }//END main()
 

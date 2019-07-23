@@ -15,15 +15,17 @@ extern configType config;
 int readConfig() {
 	FILE 	*fptr;
 	char	line[2*BLOCKSIZE], comment[2*BLOCKSIZE];
-	int 	status, maxReps = 30;
+	int 	status, maxReps = 30, r2 = 0;
 
 	fptr = fopen("config.dro", "r");
 	if ( fptr == NULL ) {
 		errMsg("read", "readConfig", "failed to open configuration file", 0);
 		return 1;
 	}
+
 	config.RUN_SEED = (long long *) arr_alloc(maxReps+1, long long);
-	config.NUM_REPS = 0;
+	config.EVAL_SEED = (long long *) arr_alloc(maxReps+1, long long);
+	config.MAX_OBS = 0;
 
 	while ((status = (fscanf(fptr, "%s", line) != EOF))) {
 		if (!(strcmp(line, "RUN_SEED"))) {
@@ -42,6 +44,14 @@ int readConfig() {
 			fscanf(fptr, "%d", &config.MAX_ITER);
 		else if (!(strcmp(line, "MASTER_TYPE")))
 			fscanf(fptr, "%d", &config.MASTER_TYPE);
+		else if (!(strcmp(line, "CUT_MULT")))
+			fscanf(fptr, "%d", &config.CUT_MULT);
+		else if (!(strcmp(line, "R1")))
+			fscanf(fptr, "%lf", &config.R1);
+		else if (!(strcmp(line, "R2")))
+			fscanf(fptr, "%lf", &config.R2);
+		else if (!(strcmp(line, "R3")))
+			fscanf(fptr, "%lf", &config.R3);
 		else if (!(strcmp(line, "EPSILON")))
 			fscanf(fptr, "%lf", &config.EPSILON);
 
@@ -53,10 +63,39 @@ int readConfig() {
 		else if (!(strcmp(line, "MULTIPLE_REP")))
 			fscanf(fptr, "%d", &config.MULTIPLE_REP);
 
+		else if (!(strcmp(line, "SAA")))
+			fscanf(fptr, "%d", &config.SAA);
 		else if (!(strcmp(line, "SAMPLING_TYPE")))
 			fscanf(fptr, "%d", &config.SAMPLING_TYPE);
 		else if (!(strcmp(line, "MAX_OBS")))
 			fscanf(fptr, "%d", &config.MAX_OBS);
+
+		else if (!(strcmp(line, "EVAL_FLAG")))
+			fscanf(fptr, "%d", &config.EVAL_FLAG);
+		else if (!(strcmp(line, "EVAL_SEED"))) {
+			fscanf(fptr, "%lld", &config.EVAL_SEED[r2+1]);
+			r2++;
+			if ( r2 > maxReps + 1 ) {
+				maxReps *= 2;
+				config.EVAL_SEED = (long long *) mem_realloc(config.EVAL_SEED, (maxReps+1)*sizeof(long long));
+			}
+		}
+		else if (!(strcmp(line, "EVAL_MIN_ITER")))
+			fscanf(fptr, "%d", &config.EVAL_MIN_ITER);
+		else if (!(strcmp(line, "EVAL_ERROR")))
+			fscanf(fptr, "%lf", &config.EVAL_ERROR);
+
+		else if (!(strcmp(line, "DRO_TYPE"))) {
+			int temp;
+			fscanf(fptr, "%d", &temp);
+			switch (temp) {
+			case 0: config.DRO_TYPE = RISK_NEUTRAL; break;
+			case 1: config.DRO_TYPE = MOMENT_MATCHING; break;
+			default: errMsg("read", "readConfig", "unrecognized parameter in configuration file", 1); break;
+			}
+		}
+		else if (!(strcmp(line, "DRO_PARAM")))
+			fscanf(fptr, "%lf", &config.DRO_PARAM);
 
 		else if (!strcmp(line, "//"))
 			fgets(comment, 2*BLOCKSIZE, fptr);
@@ -139,8 +178,12 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 		errMsg("setup", "newCell", "failed to setup the master problem", 0);
 		return NULL;
 	}
+
 	/* setup the subproblem */
 	cell->subprob = newSubproblem(prob[1]->sp);
+
+	/* Setup the distribution separation problem */
+	cell->sep = NULL;
 
 	/* -+-+-+-+-+-+-+-+-+-+-+ Allocating memory to other variables that belongs to cell +-+-+-+-+-+-+-+-+-+- */
 	cell->k 	= 0;
@@ -150,7 +193,10 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	cell->candidX 	= duplicVector(xk, prob[0]->num->cols);
 	cell->candidEst	= prob[0]->lb + vXvSparse(cell->candidX, prob[0]->dBar);
 
-	cell->optFlag 			= false;
+	/* optimality and feasibility flags */
+	cell->optFlag 	 = false;
+	cell->spFeasFlag = true;
+	cell->infeasIncumb = false;
 
 	/* incumbent solution and estimates */
 	if (config.MASTER_TYPE == PROB_QP) {
@@ -287,6 +333,8 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 #endif
 	}
 
+	freeOneProblem(cell->sep);
+
 	return 0;
 }//END cleanCellType()
 
@@ -294,6 +342,7 @@ void freeCellType(cellType *cell) {
 
 	if ( cell ) {
 		if (cell->master) freeOneProblem(cell->master);
+		if (cell->sep) freeOneProblem(cell->sep);
 		if (cell->candidX) mem_free(cell->candidX);
 		if (cell->incumbX) mem_free(cell->incumbX);
 		if (cell->iCutIdx) mem_free(cell->iCutIdx);

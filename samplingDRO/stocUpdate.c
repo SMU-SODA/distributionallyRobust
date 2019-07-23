@@ -261,7 +261,7 @@ omegaType *newOmega(stocType *stoc) {
 			omega->cnt *= stoc->numVals[i];
 			if (omega->cnt > config.MAX_OBS) {
 				omega->cnt = config.MAX_OBS;
-				config.SAMPLING_TYPE = 0;
+				config.SAMPLING_TYPE = 1;
 				break;
 			}
 			i++;
