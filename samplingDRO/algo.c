@@ -75,6 +75,15 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 		printOptimizationSummary(cell);
 		writeOptimizationStatistics(sFile, iFile, prob, cell, rep);
 
+		/* evaluating the optimal solution*/
+		if (config.EVAL_FLAG == 1) {
+			if ( config.MASTER_TYPE == PROB_QP )
+				evaluate(sFile, stoc, prob, cell, cell->incumbX);
+			else
+				evaluate(sFile, stoc, prob, cell, cell->candidX);
+		}
+		else
+			fprintf(sFile,"\n");
 	}
 
 	printf("\n\nSuccessfully completed the DR-SD algorithm.\n");

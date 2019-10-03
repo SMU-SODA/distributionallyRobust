@@ -226,4 +226,9 @@ int updtDistSepProb(oneProblem *sep, dVector spObj, int cnt);
 oneProblem *newDistSepProb(stocType *stoc, omegaType *omega);
 oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMoments);
 
+/* evalution.c */
+int evaluate(FILE *soln, stocType *stoc, probType **prob, cellType *cell, dVector Xvect);
+void printEvaluationSummary(FILE *soln, double mean, double stdev, int cnt);
+void writeEvaluationStatistics(FILE *soln, double mean, double stdev, int cnt);
+
 #endif /* SAMPLINGDRO_H_ */

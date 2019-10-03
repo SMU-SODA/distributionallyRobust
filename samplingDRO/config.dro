@@ -60,11 +60,11 @@ RUN_SEED    1395182510837913
 RUN_SEED    3735836402047426
 
 // ******************** Sample Average Approximation ********************
-// Set to (1) if sample average approximation is to be constructed
+// Set to (0) for full sample, (1) if sample average approximation and (2) for sequential sample
 SAMPLING_TYPE 0
 
 // Number of observations to be used to set the sample average approximation
-MAX_OBS 1000
+MAX_OBS 100
 
 // ******************** Distribution robust parameters ********************
 // Type of ambiguity set: Risk-averse (0), Moment-matching (1)

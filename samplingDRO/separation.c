@@ -35,7 +35,7 @@ int obtainProbDist(oneProblem *sep, dVector probs, dVector spObj, int cnt) {
 	}
 
 	/* Solve the distribution separation problem */
-	if ( solveProblem(sep->lp, sep->name, sep->type, &status) ) {
+	if ( solveProblem(sep->lp, sep->name, sep->type, sep->mar, sep->mac, &status) ) {
 		if ( status == STAT_INFEASIBLE ) {
 			printf("Distribution separation problem is infeasible.\n");
 			return 1;
@@ -121,12 +121,12 @@ oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMomen
 	dist->mac    = omega->cnt;						/* number of columns is equal to the number of observations */
 	dist->numInt = 0;                 				/* number of integer variables in the problem  */
 
-	dist->marsz = dist->mar;
-	dist->macsz = dist->mac;
-	dist->matsz = dist->mar*dist->mac;
+	dist->marsz   = dist->mar;
+	dist->macsz   = dist->mac;
+	dist->matsz   = dist->mar*dist->mac;
 	dist->rstorsz = dist->mar*NAMESIZE;
 	dist->cstorsz = dist->mac*NAMESIZE;
-	dist->numnz = 0;
+	dist->numnz   = 0;
 
 	/* Allocate memory to the information whose type is cString */
 	if (!(dist->name = (cString) arr_alloc(NAMESIZE, char)))
@@ -170,9 +170,23 @@ oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMomen
 	strcpy(dist->name, "DistSepProb");           /* Copy problem name */
 	strcpy(dist->objname, "DistSep_Obj");     /* Copy objective name */
 
+	//	/* When using sequential sampling, we create the initial sample such that the
+	//	 * distribution separation problem is feasible. */
+	//	if ( config.SAMPLING_TYPE == 2 ) {
+	//		/* (a) Use the stoc file to generate observations */
+	//		generateOmega(stoc, observ, config.TOLERANCE, &config.RUN_SEED[0]);
+	//
+	//		/* (b) Since the problem already has the mean values on the right-hand side, remove it from the original observation */
+	//		for ( int m = 0; m < stoc->numOmega; m++ )
+	//			observ[m] -= stoc->mean[m];
+	//
+	//		/* (d) update omegaType with the latest observation. If solving with incumbent then this update has already been processed. */
+	//		cell->sample->omegaIdx[obs] = calcOmega(observ - 1, 0, prob[1]->num->numRV, cell->omega, &cell->sample->newOmegaFlag[obs], config.TOLERANCE);
+	//	}
+
 	/* Add columns to the problem: one for every scenario */
 	offset = 0;
-	for ( int obs = 0; obs < omega->cnt; obs++ ) {
+	for ( int obs = 0; obs < dist->mac; obs++ ) {
 		sprintf(tempName,"obs[%d]", obs);
 		strcpy(dist->cstore + offset, tempName);
 		dist->cname[obs]  = dist->cstore + offset;
@@ -243,4 +257,3 @@ oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMomen
 
 	return dist;
 }//END newDistProb()
-

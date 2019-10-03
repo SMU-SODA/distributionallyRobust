@@ -24,7 +24,7 @@ int solveMaster(numType *num, sparseVector *dBar, cellType *cell) {
 
 	tic = clock();
 	/* solve the master problem */
-	if ( solveProblem(cell->master->lp, cell->master->name, config.MASTER_TYPE, &status) ) {
+	if ( solveProblem(cell->master->lp, cell->master->name, config.MASTER_TYPE, cell->master->mar, cell->master->mac, &status) ) {
 		writeProblem(cell->master->lp, "error.lp");
 		errMsg("algorithm", "solveMaster", "failed to solve the master problem", 0);
 		return 1;

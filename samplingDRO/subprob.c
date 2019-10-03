@@ -50,7 +50,7 @@ int solveSubprob(probType *prob, oneProblem *subproblem, dVector Xvect, dVector 
 	}
 
 	/* (e) Solve the subproblem to obtain the optimal dual solution. */
-	if ( solveProblem(subproblem->lp, subproblem->name, subproblem->type, &status) ) {
+	if ( solveProblem(subproblem->lp, subproblem->name, subproblem->type, subproblem->mar, subproblem->mac, &status) ) {
 		if ( status == STAT_INFEASIBLE ) {
 			printf("Subproblem is infeasible: need to create feasibility cut.\n");
 			(*spFeasFlag) = false;

@@ -223,9 +223,9 @@ omegaType *newOmega(stocType *stoc) {
 
 	if ( !(omega = (omegaType *) mem_malloc(sizeof(omegaType))) )
 		errMsg("allocation","newOmega", "omega", 0);
-	if ( !(omega->probs = (dVector) arr_alloc(100, double)) )
+	if ( !(omega->probs = (dVector) arr_alloc(config.MAX_OBS, double)) )
 		errMsg("allocation", "newOmega", "omega->probs", 0);
-	if ( !(omega->vals = (dVector *) arr_alloc(100, dVector)) )
+	if ( !(omega->vals = (dVector *) arr_alloc(config.MAX_OBS, dVector)) )
 		errMsg("allocation", "newOmega", "omega->vals", 0);
 	omega->cnt = 0; omega->numRV = stoc->numOmega;
 
