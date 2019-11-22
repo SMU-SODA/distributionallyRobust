@@ -1,0 +1,228 @@
+\documentclass[11pt]{article}
+
+\usepackage{myArticle}
+
+\newcommand{\calQ}{\mathcal{Q}}
+\newcommand{\worstQ}{\mathbb{Q}}
+
+\newcommand{\probset}{\mathfrak{P}}
+
+\newtheorem{remark}{Remark}
+
+\newcommand{\mb}{\color{blue}}
+\newcommand{\del}{\color{gray}}
+
+\title{A Sequential Sampling-based Method for Two-Stage Distributionally Robust Linear Programs}
+\date{\today}
+\author{}
+\lhead{Sampling for DRO}
+\cfoot{\thepage}
+
+\begin{document}
+\maketitle
+We study the two-stage distributionally robust linear programs (2-DRLPs) which can be stated as follows:%
+\begin{align}
+\min~ \{f(x) = c^\top x + \worstQ(x) ~|~ x \in \set{X} \} \tag{M} \label{eqn:TSDR-LP_master}
+\end{align}
+where $\set X \subseteq \RR^{d_x}$ is the feasible set of the first-stage decision vector $x$, $c$ is the coefficient vector of a linear cost function, and the function $\worstQ(x)$ is the worst-case expected recourse cost, i.e., % which is formally defined as follows:
+\begin{align}
+    \worstQ(x) = \max_{P\in\probset}~ \expect{Q(x,\rv)}{P}. \label{eqn:distrSeparation}
+\end{align}
+Here, the random vector $\rv$ is defined on a measurable space $(\rvSet, \cal F)$ equipped with  sigma-algebra $\set F$, $\probset$ is a set probability distributions of $\rv$ and the expectation $\expect{\cdot}{P}$ is taken with respect to probability distribution $P \in \probset$. Additionally, for a given realization $\obs$ of the random vector $\rv$, the recourse cost in \eqref{eqn:distrSeparation} is the optimal value of the following second-stage linear program:
+\begin{align} \label{eqn:subproblem}
+    Q(x,\obs) := \min \quad & g^\top y \tag{S} \\
+    \text{s.t.} \quad
+    & y \in \set Y(x,\obs) := \big\{W y = r(\obs) - T(\obs) x,~ y \geq 0\big\} \subset \RR^{d_y}, \notag
+\end{align}
+where $g\in \RR^{d_y}$, $W \in \mathbb{R}^{m \times d_y}$, $r(\obs)\in \mathbb{R}^m$, and $T(\obs)\in \RR^{m\times d_x}$. Since the second-stage decision $y$ is made in response to a chosen first-stage decision $x$ and an uncertainty realization $\obs$, the second-stage optimization problem is referred to as the recourse problem. 
+
+\gap
+In the remainder of this paper, we make the following assumptions:
+\begin{enumerate}[label=(A\arabic{enumi})]
+    \item The first-stage feasible region $\set X:= \{x: Ax \geq b, x \geq 0\}$ is a non-empty and compact set. \label{assum:compactX}
+    \item There exists a $L > -\infty$ such that $L \leq Q(x,\rv) < \infty$, almost surely. \label{assum:completeRecourse}
+    \item $\rvSet$ is a compact metric space. \label{assum:compactRV}
+    \item The ambiguity set $\worstQ$ is weakly compact, and $P\{|\rv - \obs| < \delta\} > 0$ for any $\obs \in \rvSet$ and $P \in \worstQ$. \label{assum:compactAmb}
+\end{enumerate}
+
+Using the approximate recourse function first-stage objective function approximation in \eqref{eq:objfnApprox} can be restated as
+\begin{align}
+    f^k(x) =  \max_{P \in \probset^k} \{F^k(x,P) := c^\top x +\expect{Q^k(x,\rv)}{P}\}.
+\end{align}
+We further define $\phi = \min_{x \in \cal X} F(x)$ and $\phi^k = \min_{x \in \cal X} F^k(x)$.
+
+Recall that, the candidate solution is given by
+\begin{align}
+    x^k \in \arg \min \{f^{k-1}(x) + \frac{\rho}{2} \|x-\hat{x}^{k-1}\|^2\}.
+\end{align}
+The extremal distribution associated with the candidate solution $x^k$ will be denoted as $P^k \in \worstQ^k$. The incumbent solution is updated if the following inequality is satisfied
+\begin{align} \label{eq:incumbUpdt}
+    f^k(x^k) - f^k(\hat{x}^{k-1}) < \gamma [f^{k-1}(x^k) - f^{k-1}(\hat{x}^{k-1})]
+\end{align}
+for $\gamma > 0$. Let $\set{K} := \{k_1, k_2,\ldots, k_n, \ldots \}$ denote the set of iterations at which the incumbent solution was updated. The optimality of $x^k$ implies that
+\begin{align*}
+    f^{k-1}(x^k) + \frac{\rho}{2}\|x^k - \hat{x}^{k-1}\|^2 \leq f^{k-1}(\hat{x}^{k-1}).
+\end{align*}
+Therefore, $\theta^k := f^{k-1}(x^k) - f^{k-1}(\hat{x}^{k-1}) \leq 0$. 
+
+\section{Convergence Analysis of the Regularized Algorithm}
+In this section we provide the convergence result of our sequential sampling-based method. In order to facilitate the exposition of our theoretical results, we will define certain quantities. Note that these quantities are defined only for notational convenience, and are not necessarily computed during the course of the algorithm in the form represented here.
+
+We begin by writing the approximate recourse function as:
+\begin{align}
+    Q^k(x,\obs) = \max~\{\pi^\top [r(\obs) - T(\obs)x]~|~ \pi \in \Pi^k\}, \qquad \forall k \geq 1.
+\end{align}
+These approximations are defined as pointwise maximum of affine functions (cuts), and therefore are piecewise affine convex functions. The following lemma captures the main properties of the sequence of approximations generated. The proof of part \ref{lemma:uniformConvergence} of the Lemma is due to Lemma 1 and Theorem 2 in \cite{Higle1991} which captures the limiting behavior of the minorants generated in 2-SD algorithm. We provide the complete proof here as certain constructions used are relevant in subsequent discussions.
+
+\begin{proposition} \label{lemma:recourseApprox}
+The sequence of functions $\{Q^k(x,\obs)\}_{k \geq 1}$ generated by the algorithm satisfies the following:
+\begin{enumerate}[label=(\alph{enumi})]
+    \item For a given $(x,\obs) \in \set{X} \times \rvSet$, the sequence converges uniformly to a continuous function $g(x,\obs)$. For an infinite subsequence $\{x^k\}_\mathcal{K}$ of candidate solutions generated by the algorithm such that $\{x^k\}_{\set{K}} \rightarrow \bar{x}$, the function $g(\cdot)$ satisfies $g(\bar{x}, \obs) = Q(\bar{x},\obs)$ for all $\obs \in \rvSet$. \label{lemma:uniformConvergence}
+    \item If $\expect{Q(x,\rv)}{P}$ is continuous with respect to $P \in \probset$, then for a given sequence $\{(x^k, P^k)\}_{k \geq 1}$ that converges to $(\bar{x}, \overline{P})$,  
+    \begin{align*}
+   \lim_{k\rightarrow \infty}\expect{Q^k(x^k, \rv)}{P^k} = \expect{Q(\bar{x}, \rv)}{\overline{P}}
+    \end{align*}
+    with probability one. \label{lemma:expectedRecourse}
+\end{enumerate}
+\end{proposition}
+\begin{proof}
+For part \ref{lemma:uniformConvergence}, recall that $\set{X} \times \rvSet$ is a compact set (\ref{assum:compactX}) and \ref{assum:compactRV}), and $\{Q^k\}$ is a sequence of continuous (piecewise linear and convex) functions. The construction of the set of dual vertices satisfies $\Pi_k \subseteq \Pi_{k+1} \subseteq \Pi$ that ensures that the sequence $\{Q^k\}$ is monotonically increasing, i.e., $Q^k(x,\obs) \leq Q^{k+1}(x,\obs) \leq Q(x,\obs)$ for all $(x,\obs)\in (\set{X}, \rvSet)$, and bounded by a finite function $Q$ (due to \ref{assum:completeRecourse}). Therefore, this sequence pointwise converges to some function $g(x,\obs) \leq Q(x,\obs)$. Since the set of dual vertices $\Pi$ is finite, the set $\lim_{k\rightarrow\infty}\Pi_k := \overline{\Pi} (\subseteq \Pi)$ is also a finite. Clearly, 
+\begin{align*}
+    g(x,\obs) = \lim_{k \rightarrow \infty} Q^k(x,\obs) = \max~\{\pi^\top [r(\obs) - T(\obs)x]~|~ \pi \in \overline{\Pi}\}
+\end{align*}
+is the optimal value of a LP, and hence, is a continuous function. The compactness of $\set{X} \times \rvSet$, and continuity, monotonicity and pointwise convergence of $\{Q^k\}$ to $g$ guarantees that the sequence converges uniformly to $g$ (Theorem 7.13 in \cite{Rudin1976}).
+
+Let $\obs$ be given. Assumptions \ref{assum:compactRV} and \ref{assum:compactAmb} ensures for any $\delta > 0$ and $k \in \mathcal{K}$ that $|\obs^k - \obs| < \delta$ infinitely often, with probability one. Further, since $\{x^k\}_{\set{K}} \rightarrow \bar{x}$, $Q$ is a continuous function and $\{Q^k\}$ is a uniformly convergent sequence of continuous functions there exists a further subsequence $\{x^{k'},\obs^{k'}\}_{\mathcal{K}'}$ and $K < \infty$ such that  
+\begin{align*}
+    &|Q(\bar{x},\obs) - Q(\bar{x},\obs^{k'})| <\epsilon/3, \\    
+    &|Q(\bar{x},\obs^{k'}) - Q(x^{k'},\obs^{k'})| <\epsilon/3, \ \text{ and } \\    
+    &|Q^{k'}(x^{k'},\obs^{k'}) - Q^{k'}(x^{k'},\obs)| <\epsilon/3
+\end{align*}
+for all $k' \geq K$. Since, the recourse function is computed exactly for $(x^{k'}, \obs^{k'})$ as input, the affine function generated in iteration $k'$ is a supporting hyperplane to $Q(x^{k'}, \obs^{k'})$, i.e., $Q^{k'}(x^{k'}, \obs^{k'}) = Q(x^{k'}, \obs^{k'})$. Therefore, for every $\epsilon >0$, there exists a subsequence $\{x^{k'}\}_{k' \in \mathcal{K}'}$ and $K < \infty$ such that
+\begin{align*}
+     |Q(\bar{x},\obs) - Q^{k'}(x^{k'},\obs)| < & \ | Q(\bar{x}, \obs) - Q(\bar{x},\obs^{k'})| + |Q(\bar{x},\obs^{k'}) - Q^{k'}(x^{k'},\obs^{k'})| \\& \hspace*{4cm} + |Q^{k'}(x^{k'},\obs^{k'}) - Q^{k'}(x^{k'},\obs)| \\
+     = & \ | Q(\bar{x}, \obs) - Q(\bar{x},\obs^{k'})| + |Q(\bar{x},\obs^{k'}) - Q(x^{k'},\obs^{k'})| \\ & \hspace*{4cm} + |Q^{k'}(x^{k'},\obs^{k'}) - Q^{k'}(x^{k'},\obs)| \\
+     < &~ \epsilon
+\end{align*}
+for all $k' \geq \mathcal{K}$. It follows that $Q^{k'}(\bar{x},\obs) \rightarrow g(\bar{x},\obs) = Q(\bar{x},\obs)$ with probability one. The completes the proof of part \ref{lemma:uniformConvergence}.
+
+For part \ref{lemma:expectedRecourse}, note that $\{Q^k\}$ is a monotonically increasing sequence of measurable functions that converges uniformly to $g(x,\obs)$. Using the Lebesgue's monotone convergence theorem (Theorem 11.28 in \cite{Rudin1976}), \begin{align*}
+    \expect{\lim_{k \rightarrow \infty} Q^k(x,\rv)}{P} = \expect{g(x,\rv)}{P}
+\end{align*}
+for any $x \in \set{X}$ and $P \in \mathfrak{P}$. Invoking $g(\bar{x}, \obs) = Q(\bar{x}, \obs)$ (from part \ref{lemma:uniformConvergence}) and the continuity of $\expect{Q(x,\cdot)}{P}$ with respect to $P \in \probset$, we have
+\begin{align*}
+    \lim_{P \rightarrow \overline{P}} \expect{\lim_{k \in \mathcal{K}'} Q^k(\bar{x},\rv)}{P} = \expect{Q(\bar{x},\rv)}{\overline{P}}.
+\end{align*}
+This completes the proof.
+\end{proof}
+
+\begin{lemma}
+Let $\{\hat{x}^k\}_{k \in \set{K}}$ be an infinite subsequence of $\{\hat{x}^k\}$. If $\{\hat{x}^k\}_{\set{K}} \rightarrow \bar{x}$, then with probability one,
+\begin{align*}
+	\lim_{k \in \set{K}} f^k(\hat{x}^k) = \lim_{k \in \set{K}} f^{k+1}(\hat{x}^{k}) = f(\bar{x}).
+\end{align*}
+
+\end{lemma}
+
+\begin{lemma}\label{lemma:vanishingError}
+There exists a subsequence of iterations, denoted as $\set{K}^*$, such that $\lim_{k \in \set{K}^*} \theta^k = 0$.
+\end{lemma} 
+\begin{proof} We will consider two cases depending on whether the set $|\set{K}|$ is finite or not. First, suppose that $|\set{K}|$ is not finite. By the incumbent update rule
+\begin{align*}
+    f^{k_n}(x^{k_n}) - f^{k_n}(\hat{x}^{k_n-1}) < \gamma [f^{k_n-1}(x^{k_n}) - f^{{k_n}-1}(\hat{x}^{k_n-1})] = \gamma \theta^{k_n} \leq 0 \qquad \forall k_n \in \set{K}.
+\end{align*}
+Since $x^{k_n} = \hat{x}^{k_n}$ and $\hat{x}^{k_n-1} = \hat{x}^{k_{n-1}}$, we have
+\begin{align*}
+    f^{k_n}(\hat{x}^{k_n}) - f^{k_n}(\hat{x}^{k_{n-1}}) \leq \gamma \theta^{k_n} \leq 0. 
+\end{align*}
+This implies that $\limsup_{n \rightarrow \infty} \theta^{k_n} \leq 0$. The left-hand side of the above inquantity captures the improvement in the objective function value at the current incumbent solution over the previous incumbent solution. Using the above, we can write the average improvement attained over $n$ incumbent changes as
+\begin{align*}
+    \frac{1}{n} \sum_{j = 1}^n \bigg[f^{k_j}(\hat{x}^{k_j}) - f^{k_j}(\hat{x}^{k_{j-1}}) \bigg] \leq \frac{1}{n} \sum_{j = 1}^n \theta^{k_j} \leq 0 \qquad \forall n, \\
+    \Rightarrow \frac{1}{n}\bigg[\bigg(f^{k_n}(\hat{x}^{k_n}) - f^{k_1}(\hat{x}^{k_0}) \bigg)+ \sum_{j=1}^{n-1} \bigg(f^{k_j}(\hat{x}^{k_j}) - f^{k_{j-1}}(\hat{x}^{k_j}) \bigg) \bigg]  \leq \frac{1}{n} \sum_{j = 1}^n \theta^{k_j} \leq 0 \qquad \forall n.
+\end{align*}
+\textcolor{blue}{Under the assumption that the dual feasible region is non-empty and bounded (this is ensured by relatively complete recourse), the first term in the brackets reduces to zero as $n \rightarrow \infty$. The second term converges to zero, with probability one, due to uniform convergence of $\{f^k\}$.} Thus,
+\begin{align*}
+    \lim_{n \rightarrow \infty} \frac{1}{m} \sum_{j = 1}^n \theta^{k_n} = 0
+\end{align*}
+with probability one. Further,
+\begin{align*}
+    \lim_{n \rightarrow \infty} \frac{1}{m} \sum_{j = 1}^n \theta^{k_n} \leq \limsup_{n \rightarrow \infty} \theta^{k_n} \leq 0.
+\end{align*}
+Thus, there exists a subsequence indexed by the set $\set{K}^*$ such that $\lim_{k \in \set{K}^*} \theta^k = 0$, with probability one.  
+
+Now if $|\set{K}|$ is finite, then there exists $\hat{x}$ and $K < \infty$ such that for all $k \geq K$, we have $\hat{x}^k = \hat{x}$. Further, since the incumbent is not updated in iterations $k \geq K$ we must have 
+\begin{align*}
+	f^{k}(x^k) - f^{k}(\hat{x}) \geq \gamma [f^{k-1}(x^k) - f^{k-1}(\hat{x})].
+\end{align*}
+\textcolor{blue}{If $\lim_{k \in \set{K}^*} x^k = \bar{x}$, uniform convergence of the sequence $\{f^k\}$ ensures that $\lim_{k \in \set{K}^*} f^k(x^k) = f(\bar{x})$ and $\lim_{k \in \set{K}^*} f^k(\hat{x}) = f(\hat{x})$}. Using this we have
+\begin{align*}
+	\lim_{k \in \set{K}^*} f^{k}(x^k) - f^{k}(\bar{x}) &\geq \gamma \lim_{k \in \set{K}^*} f^{k-1}(x^k) - f^{k-1}(\hat{x}) \\
+	\Rightarrow f(\bar{x}) - f(\hat{x}) &\geq \gamma(f(\bar{x}) - f(\bar{x})) \\
+	&= \lim_{k \in \set{K}^*} \gamma\theta^k.
+\end{align*}
+Since $\gamma \in (0,1)$ and $\theta^k \leq 0$, we have $\lim_{k \in \set{K}^*} \theta^k = 0$ with probability one.
+\end{proof}
+
+\begin{theorem}
+Let $\{x^k\}_{k=1}^\infty$ and $\{\hat{x}^k\}_{k \in \set{K}}$ be the sequence candidate and incumbent solutions generated by the algorithm. There exists a subsequence of iterations, indexed by $\set{K}^*$, such that every accumulation point of $\{\hat{x}^k\}_{k \in \set{K}^*}$ is an optimal solution with probability one.
+\end{theorem}
+\begin{proof}
+Note that,
+\begin{align*}
+    \theta^{k} = f^{{k}-1}(x^{k_n}) - f^{{k}-1}(\hat{x}^{{k}-1})
+    &\leq f^{{k}-1}(x^*) - f^{{k}-1}(\hat{x}^{{k}-1}) \\
+    &\leq f(x^*) - f^{{k}-1}(\hat{x}^{{k}-1})
+    \qquad \forall k \in \set{K}^*.
+\end{align*}
+\textcolor{blue}{The first inequality follows from the optimality of $x^{k}$, and the second inequality is due to the fact that $f^k(x) \leq f(x)$ for all $k \geq 1$.}
+
+Using the result of Lemma \ref{lemma:vanishingError}, there exists a subsequence indexed by $\set{K}^*$ such that if $\bar{x}$ is the accumulation point of $\{\hat{x}^{k}\}_{k \in \set{K}^*}$, we have 
+\begin{align*}
+    0 = \lim_{k \in \set{K}^*} \theta^{k} \leq \lim_{k \in \set{K}^*} f(x^*) - f^{{k}-1}(\hat{x}^{{k}-1}) = f(x^*) - f(\bar{x}).
+\end{align*}
+The above implies that $f(\bar{x}) \leq f(x^*)$ which leads us to conclude that $x^*$ is an optimal solution with probability one. \textcolor{blue}{The second equality requires the following property of the approximation sequence: $\lim_{k \in \set{K}^*} f^{k-1}(\hat{x}^{k-1}) = f(\bar{x}).$}
+\end{proof}
+
+\section{Extra}
+\begin{lemma}
+The sequence of candidate solutions generated by the algorithm satisfies
+\begin{align*}
+    f(x^*) \leq \liminf_{k \rightarrow \infty} f^{k-1}(x^k), 
+\end{align*}
+with probability one.
+\end{lemma}
+\begin{proof}
+Suppose the hypothesis is not true, and for $\epsilon >0$ we have
+\begin{align*}
+    f(x^*) - \epsilon &> \liminf_{k \rightarrow \infty} f^{k-1}(x^k).
+\end{align*}
+Therefore, there exists a subsequence $\{x^i\}_{i \in \set{I}}$, such that
+\begin{align}\label{eq:fkn}
+    f(x^*) - \epsilon > f^{i-1}(x^i) \qquad \forall i \in \set{I}.
+\end{align}
+Since $\set{X}$ is a compact set, there is a further subsequence indexed by $\set{I}' \subset \set{I}$ such that $\{x^i\}_{i \in \set{I}'} \rightarrow \bar{x} \in \set{X}$ and \textcolor{red}{$\{P^i\}_{i \in \set{I}'} \rightarrow \bar{P}$}. The latter follows from the weak compactness of the ambiguity set $\probset$ \ref{assum:compactAmb}. Over this subsequence we have 
+\begin{align*}
+	f^{i-1}(x^i) &= c^\top x^i + \expect{Q^{i-1}(x^i,\rv)}{P^i} \\
+	& \geq c^\top x^i + \expect{Q^{i-1}(x^i,\rv)}{P} \qquad \forall i \in \set{I}', P \in \probset^i  \\
+	\Rightarrow f(x^*) - \epsilon &> \lim_{i \in \set{I}'} c^\top x^i + \expect{Q^{i-1}(x^i,\rv)}{P}.
+\end{align*}
+The first inequality is due to the fact that $P^i$ is an extremal distribution computed at $x^i$. Using Lemma \ref{lemma:recourseApprox}\ref{lemma:expectedRecourse}, we have
+\begin{align*}
+	f(x^*) - \epsilon > c^\top \bar{x} + \expect{Q(\bar{x}, \rv)}{\bar{P}}
+\end{align*}
+which contradicts the hypothesis that $x^*$ is an optimal solution. 
+\end{proof}
+
+If incumbent changes finitely often then there exists a $K < \infty$ such that $\hat{x}^k = \hat{x}$ for all $k \geq K$. In this case, for $k > K$
+\begin{align*}
+    f^{k-1}(x^k) \leq f^{k-1}(x^k) + \frac{\sigma}{2}\|x^k - \hat{x}^{k-1}\|^2 \leq f^{k-1}(\hat{x}^{k-1}) \leq f(\hat{x}^{k-1}).
+\end{align*}
+Therefore, $\limsup_{k\rightarrow \infty} f^{k-1}(x^k) \leq f(\hat{x})$. \textcolor{blue}{The last inequality in the above follows from the fact that $f^k(x) \leq f(x)$ for all $k \geq 1$.}
+\textcolor{red}{Incomplete}.
+
+
+\bibliographystyle{plain}
+\bibliography{allmyReferences}%{bibMB_DRO,stocProg}
+
+
+\end{document}
