@@ -17,7 +17,11 @@
 #include "smps.h"
 #include "prob.h"
 
-#undef SEP_CHECK
+#define SETUP_CHECK
+#undef ALGO_CHECK
+#undef CUT_CHECK
+#undef EVAL_CHECK
+#define SEP_CHECK
 
 enum droType {
 	RISK_NEUTRAL,
@@ -25,8 +29,7 @@ enum droType {
 }droType;
 
 typedef struct{
-	int		NUM_REPS;			/* Maximum number of replications that can be carried out. */
-	int 	MULTIPLE_REP;		/* When multiple replications are needed, set this to (1), else (0) */
+	int 	MULTIPLE_REP;		/* Number of replications (integer) */
 	long long *RUN_SEED;		/* seed used during optimization */
 
 	double 	TOLERANCE; 			/* for zero identity test */
@@ -134,8 +137,7 @@ typedef struct {
 	double		gamma;				/* Improvement in obejctive function */
 	double 		quadScalar; 		/* the proximal parameter/quadratic scalar 'sigma' */
 	bool        incumbChg;			/* set to be true if the incumbent solution has changed in an iteration */
-	iVector     iCutIdx;			/* index of incumbent cuts in cell->cuts structure. If multicut is used, there will be one
-	 	 	 	 	 	 	 	 	   for each observation. */
+	int     	iCutIdx;			/* index of incumbent cuts in cell->cuts structure. */
 	dVector		piM;				/* Dual vector for the master problem (original and the cuts) */
 
     int      	maxCuts;            /* maximum number of cuts to be used*/
@@ -169,7 +171,7 @@ void freeCellType(cellType *cell);
 /* algo.c */
 int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cString probName);
 int solveFixedDROCell(stocType *stoc, probType **prob, cellType *cell);
-bool optimal(cellType *cell);
+bool optimal(probType *prob, cellType *cell);
 
 /* master.c */
 int solveMaster(numType *num, sparseVector *dBar, cellType *cell);

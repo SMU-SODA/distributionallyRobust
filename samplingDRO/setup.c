@@ -15,7 +15,7 @@ extern configType config;
 int readConfig() {
 	FILE 	*fptr;
 	char	line[2*BLOCKSIZE], comment[2*BLOCKSIZE];
-	int 	status, maxReps = 30, r2 = 0;
+	int 	status, maxReps = 30, numReps = 0, numEvals = 0;
 
 	fptr = fopen("config.dro", "r");
 	if ( fptr == NULL ) {
@@ -29,9 +29,9 @@ int readConfig() {
 
 	while ((status = (fscanf(fptr, "%s", line) != EOF))) {
 		if (!(strcmp(line, "RUN_SEED"))) {
-			fscanf(fptr, "%lld", &config.RUN_SEED[config.NUM_REPS+1]);
-			config.NUM_REPS++;
-			if ( config.NUM_REPS > maxReps + 1 ) {
+			fscanf(fptr, "%lld", &config.RUN_SEED[numReps+1]);
+			numReps++;
+			if ( numReps > maxReps + 1 ) {
 				maxReps *= 2;
 				config.RUN_SEED = (long long *) mem_realloc(config.RUN_SEED, (maxReps+1)*sizeof(long long));
 			}
@@ -75,9 +75,9 @@ int readConfig() {
 		else if (!(strcmp(line, "EVAL_FLAG")))
 			fscanf(fptr, "%d", &config.EVAL_FLAG);
 		else if (!(strcmp(line, "EVAL_SEED"))) {
-			fscanf(fptr, "%lld", &config.EVAL_SEED[r2+1]);
-			r2++;
-			if ( r2 > maxReps + 1 ) {
+			fscanf(fptr, "%lld", &config.EVAL_SEED[numEvals+1]);
+			numEvals++;
+			if ( numEvals > maxReps + 1 ) {
 				maxReps *= 2;
 				config.EVAL_SEED = (long long *) mem_realloc(config.EVAL_SEED, (maxReps+1)*sizeof(long long));
 			}
@@ -109,8 +109,10 @@ int readConfig() {
 
 	fclose(fptr);
 
-	if ( config.MULTIPLE_REP == 0 )
-		config.NUM_REPS = 1;
+	if ( config.MULTIPLE_REP > minimum(numReps, numEvals) ) {
+		config.MULTIPLE_REP = minimum(numReps, numEvals);
+		printf("Warning: Performing only %d replications due to lack of seeds to run or evaluate.\n", config.MULTIPLE_REP);
+	}
 
 	return 0;
 }//END readConfig()
@@ -133,7 +135,7 @@ int setupAlgo(oneProblem *orig, stocType *stoc, timeType *tim, probType ***prob,
 		goto TERMINATE;
 	}
 
-#ifdef DECOMPOSE_CHECK
+#if defined(SETUP_CHECK)
 	printDecomposeSummary(stdout, orig->name, tim, (*prob));
 #endif
 
@@ -201,28 +203,33 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	cell->infeasIncumb = false;
 
 	/* incumbent solution and estimates */
-	if (config.MASTER_TYPE == PROB_QP) {
+
+	if (config.MASTER_TYPE == PROB_QP || config.SAMPLING_TYPE == 2 ) {
 		cell->incumbX   = duplicVector(xk, prob[0]->num->cols);
-		cell->incumbEst = cell->candidEst;
-		cell->gamma		= 0.0;
+
 		cell->quadScalar= config.MIN_QUAD_SCALAR;     						/* The quadratic scalar, 'sigma'*/
-		cell->incumbChg = true;
+		cell->incumbEst = cell->candidEst;
+		cell->incumbChg = false;
+		cell->iCutIdx   = 0;
+		cell->gamma		= 0.0;
 
 		cell->maxCuts = config.CUT_MULT*prob[0]->num->cols + 1;
-		cell->iCutIdx = (iVector) arr_alloc(cell->omega->cnt, int);
 
 		if ( !(cell->piM = (dVector) arr_alloc(prob[0]->num->rows + cell->maxCuts + 1, double)) )
 			errMsg("allocation", "newMaster", "cell->piM", 0);
 	}
 	else {
 		cell->incumbX   = NULL;
-		cell->incumbEst = 0.0;
+
 		cell->quadScalar= 0.0;
-		cell->iCutIdx   = NULL;
 		cell->incumbChg = false;
+		cell->iCutIdx   = 0;
+		cell->gamma		= 0.0;
 
 		cell->maxCuts = config.MAX_ITER;
+		cell->piM = NULL;
 	}
+
 	cell->cuts = newCuts(cell->maxCuts);
 
 	if ( !(cell->time = (runTime *) mem_malloc(sizeof(runTime)) ) )
@@ -241,14 +248,6 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 			errMsg("setup", "newCell", "failed to change the right-hand side after incumbent change", 0);
 			return NULL;
 		}
-
-		cell->incumbChg = false;
-#if defined(ALGO_CHECK)
-		if ( writeProblem(cell->master->lp, "newQPMaster.lp") ) {
-			errMsg("write problem", "new_master", "failed to write master problem to file",0);
-			return NULL;
-		}
-#endif
 	}
 
 	if ( config.SAMPLING_TYPE == 2 ) {
@@ -262,6 +261,13 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 		cell->sigma  = NULL;
 		cell->delta  = NULL;
 	}
+
+#if defined(SETUP_CHECK)
+	if ( writeProblem(cell->master->lp, "newMaster.lp") ) {
+		errMsg("write problem", "new_master", "failed to write master problem to file",0);
+		return NULL;
+	}
+#endif
 
 	return cell;
 }//END newCell()
@@ -327,7 +333,7 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 
 		cell->incumbChg = false;
 
-#if defined(ALGO_CHECK)
+#if defined(SETUP_CHECK)
 		if ( writeProblem(cell->master->lp, "cleanedQPMaster.lp") ) {
 			errMsg("write problem", "new_master", "failed to write master problem to file",0);
 			return 1;

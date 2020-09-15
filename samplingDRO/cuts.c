@@ -48,17 +48,6 @@ int formOptCut(probType *prob, cellType *cell, dVector Xvect) {
 
 		if ( ! cell->spFeasFlag ) {
 			printf("Subproblem is infeasible, adding feasibility cut to the master.\n");
-			//			cut->alpha = vXvSparse(piS, prob->bBar) + mubBar + vXvSparse(piS, &bOmega);
-			//
-			//			beta = vxMSparse(piS, prob->Cbar, prob->num->prevCols);
-			//			piCBar = vxMSparse(piS, &COmega, prob->num->prevCols);
-			//			for (c = 1; c <= prob->num->rvCOmCnt; c++)
-			//				beta[prob->coord->rvCOmCols[c]] += piCBar[c];
-			//
-			//			for (c = 1; c <= prob->num->prevCols; c++)
-			//				cut->beta[c] = beta[c];
-			//
-			//			mem_free(beta);
 			break;
 		}
 
@@ -74,9 +63,11 @@ int formOptCut(probType *prob, cellType *cell, dVector Xvect) {
 			beta[obs][prob->coord->rvCOmCols[c]] += piCBar[c];
 		mem_free(piCBar);
 
-#if defined(STOCH_CHECK)
-		printf("Objective estimate computed as cut height = %lf\n", alpha - vXv(beta, Xvect, NULL, prob->num->prevCols));
+#if defined(CUT_CHECK)
+		printf("Objective function value vs. estimate = (%lf v. %lf)\n", spObj[obs], alpha[obs] - vXv(beta[obs], Xvect, NULL, prob->num->prevCols));
 #endif
+
+		cell->omega->probs[obs] = 0.01;
 	}
 
 	/* 2. Solve the distribution separation problem */

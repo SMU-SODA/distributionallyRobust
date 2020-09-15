@@ -12,6 +12,7 @@
 #include "samplingDRO.h"
 
 extern configType config;
+extern cString outputDir;
 
 int obtainProbDist(oneProblem *sep, dVector probs, dVector spObj, int cnt) {
 	int status;
@@ -25,17 +26,17 @@ int obtainProbDist(oneProblem *sep, dVector probs, dVector spObj, int cnt) {
 	/* Based on the type of ambiguity set, update the distribution separation problem */
 	if ( config.DRO_TYPE == MOMENT_MATCHING ) {
 		if ( updtDistSepProb(sep, spObj, cnt)) {
-			errMsg("algo", "obtainProbDist", "failed to update the distribution separation problem", 0);
+			errMsg("algorithm", "obtainProbDist", "failed to update the distribution separation problem", 0);
 			return 1;
 		}
 	}
 	else {
-		errMsg("algorithm", "obtainProbDist", "unknown distribution type resquested in DRO_TYPE", 0);
+		errMsg("algorithm", "obtainProbDist", "unknown distribution type requested in DRO_TYPE", 0);
 		return 1;
 	}
 
 	/* Solve the distribution separation problem */
-	if ( solveProblem(sep->lp, sep->name, sep->type, sep->mar, sep->mac, &status) ) {
+	if ( solveProblem(sep->lp, sep->name, sep->type, &status) ) {
 		if ( status == STAT_INFEASIBLE ) {
 			printf("Distribution separation problem is infeasible.\n");
 			return 1;
@@ -58,7 +59,9 @@ int obtainProbDist(oneProblem *sep, dVector probs, dVector spObj, int cnt) {
 	mem_free(tempProbs);
 
 #if defined(SEP_CHECK)
-	printVector(probs-1, cnt, NULL);
+	/* print the extremal probability distribution to the problem .*/
+	FILE *sFile = openFile(outputDir, "extremeProb.csv", "a");
+	printVector(probs-1, cnt, sFile);
 #endif
 
 	return 0;
@@ -112,7 +115,7 @@ oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMomen
 	int offset;
 
 	if (!(dist = (oneProblem *) mem_malloc (sizeof(oneProblem))))
-		errMsg("Memory allocation", "newDistSepProb_MM", "Failed to allocate memory to distSepProb", 0);
+		errMsg("Memory allocation", "newDistSepProb_MM", "failed to allocate memory to distSepProb", 0);
 
 	/* Initialize essential elements */
 	dist->type   = PROB_LP;
@@ -248,7 +251,7 @@ oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMomen
 		return NULL;
 	}
 
-#if defined(SEP_CHECK)
+#if defined(SETUP_CHECK)
 	if ( writeProblem(dist->lp, "newDistSep.lp") ) {
 		errMsg("solver", "newDistSepProb_MM", "failed to write distribution separation problem to file", 0);
 		return NULL;

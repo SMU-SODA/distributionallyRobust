@@ -19,7 +19,7 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 	dVector  meanSol;
 	clock_t	 tic;
 	int		 rep;
-	FILE 	*sFile = NULL, *bFile = NULL, *iFile = NULL;
+	FILE 	*detailedResults = NULL, *summary = NULL, *incumbFile = NULL;
 
 	/* Open solver */
 	openSolver();
@@ -28,21 +28,22 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 	if ( setupAlgo(orig, stoc, tim, &prob, &cell, &meanSol) )
 		goto TERMINATE;
 
-	sFile = openFile(outputDir, "detailedResults.csv", "w");
-	iFile = openFile(outputDir, "incumb.dat", "w");
-	bFile = openFile(outputDir, "summary.dat", "w");
+	detailedResults = openFile(outputDir, "detailedResults.csv", "w");
+	incumbFile = openFile(outputDir, "incumb.dat", "w");
+	summary = openFile(outputDir, "summary.dat", "w");
 
-	printDecomposeSummary(bFile, probName, tim, prob);
+	printDecomposeSummary(summary, probName, tim, prob);
 	printDecomposeSummary(stdout, probName, tim, prob);
 
-	for ( rep = 0; rep < config.NUM_REPS; rep++ ) {
+	for ( rep = 0; rep < config.MULTIPLE_REP; rep++ ) {
 		fprintf(stdout, "\n====================================================================================================================================\n");
 		fprintf(stdout, "Replication-%d\n", rep+1);
 
 		/* setup the seed to be used in the current iteration */
-		config.RUN_SEED[0] = config.RUN_SEED[rep+1];
+		config.RUN_SEED[0]  = config.RUN_SEED[rep+1];
+		config.EVAL_SEED[0] = config.EVAL_SEED[rep+1];
 
-		if ( rep != 0 ) {
+		if ( rep > 0 ) {
 			/* clean up the cell for the next replication */
 			if ( cleanCellType(cell, prob[0], meanSol) ) {
 				errMsg("algorithm", "benders", "failed to solve the cells using MASP algorithm", 0);
@@ -73,17 +74,15 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 
 		/* Write solution statistics for optimization process */
 		printOptimizationSummary(cell);
-		writeOptimizationStatistics(sFile, iFile, prob, cell, rep);
+		writeOptimizationStatistics(detailedResults, incumbFile, prob, cell, rep);
 
 		/* evaluating the optimal solution*/
 		if (config.EVAL_FLAG == 1) {
-			if ( config.MASTER_TYPE == PROB_QP )
-				evaluate(sFile, stoc, prob, cell, cell->incumbX);
-			else
-				evaluate(sFile, stoc, prob, cell, cell->candidX);
+			dVector evalX = (config.MASTER_TYPE == PROB_QP || config.SAMPLING_TYPE == 2) ? cell->incumbX : cell->candidX;
+			evaluate(detailedResults, stoc, prob, cell, evalX);
 		}
 		else
-			fprintf(sFile,"\n");
+			fprintf(detailedResults,"\n");
 	}
 
 	printf("\n\nSuccessfully completed the DR-SD algorithm.\n");
@@ -118,41 +117,19 @@ int solveFixedDROCell(stocType *stoc, probType **prob, cellType *cell) {
 		tic = clock();
 		cell->k++;
 
-		/******* 1. Check for optimality of the current solution *******/
-		if ( config.MASTER_TYPE == PROB_QP ) {
-			if ( optimal(cell) ) {
-				break;
-			}
-		}
-
-		/******* 2. Solve the subproblem with candidate solution, form and update the candidate cut *******/
+		/******* 1. Solve the subproblem with candidate solution, form and update the candidate cut *******/
 		if ( (candidCut = formOptCut(prob[1], cell, cell->candidX)) < 0 ) {
 			errMsg("algorithm", "solveCell", "failed to add candidate cut", 0);
 			return 1;
 		}
 
-		/******* 3. Check improvement in predicted values at candidate solution *******/
-		if ( config.MASTER_TYPE == PROB_QP ) {
-			if ( cell->k > 1 ) {
-				/* If the incumbent has not changed in the current iteration */
-				checkImprovement(prob[0], cell, candidCut);
-			}
-			else {
-				cell->incumbEst = vXvSparse(cell->incumbX, prob[0]->dBar);
-				cell->iCutIdx[0] = 0;
-				cell->cuts->vals[0]->isIncumb = true;
-				cell->incumbEst += cutHeight(cell->cuts->vals[candidCut], cell->incumbX, prob[0]->num->cols);
-			}
-		}
-		else {
-			cell->incumbEst = vXvSparse(cell->candidX, prob[0]->dBar);
-			cell->incumbEst += cutHeight(cell->cuts->vals[candidCut], cell->candidX, prob[0]->num->cols);
-
-			if (optimal(cell))
-				break;
+		/******* 2. Check for optimality of the current solution *******/
+		if (optimal(prob[0], cell)) {
+			cell->incumbEst = cell->candidEst;
+			break;
 		}
 
-		/******* 4. Solve the master problem to obtain the new candidate solution *******/
+		/******* 3. Solve the master problem to obtain the new candidate solution *******/
 		if ( solveMaster(prob[0]->num, prob[0]->dBar, cell) ) {
 			errMsg("algorithm", "solveCell", "failed to solve master problem", 0);
 			return 1;
@@ -169,27 +146,40 @@ int solveFixedDROCell(stocType *stoc, probType **prob, cellType *cell) {
 	return 0;
 }//END solveFixedDROCell()
 
-bool optimal(cellType *cell) {
+int solveSeqDROCell(stocType *stoc, probType **prob, cellType *cell) {
+	clock_t tic;
+	int candidCut;
 
-	clock_t tic = clock();
-	if ( cell->k > config.MIN_ITER ) {
-		if (cell->candidEst >= 0){
-			cell->optFlag = (cell->candidEst >= (1 - config.EPSILON) * cell->incumbEst);
+	/* Main loop of the algorithm */
+	while ( cell->k < config.MAX_ITER ) {
+		tic = clock();
+		cell->k++;
+
+		/******* 1. Check for optimality of the current solution *******/
+		if ( config.MASTER_TYPE == PROB_QP ) {
+			if ( optimal(prob[0], cell) ) {
+				break;
+			}
 		}
-		else
-			cell->optFlag = (cell->candidEst > (1 + config.EPSILON) * cell->incumbEst);
-	}
-	cell->time->optTestIter += ((double) (clock() - tic))/CLOCKS_PER_SEC;
 
-	return cell->optFlag;
-}//END optimal()
+		/******* 2. Solve the subproblem with candidate solution, form and update the candidate cut *******/
+		if ( (candidCut = formOptCut(prob[1], cell, cell->candidX)) < 0 ) {
+			errMsg("algorithm", "solveCell", "failed to add candidate cut", 0);
+			return 1;
+		}
+
+
+	}//END main loop
+
+	return 0;
+}//END solveSeqDROPCell()
 
 void writeOptimizationStatistics(FILE *soln, FILE *incumb, probType **prob, cellType *cell, int rep) {
 
 	/* Print header for the first replication*/
 	if ( rep == 0)
-		fprintf(soln, "Replication\tIterations\tLB estimate\tTotal time\tMaster time\t Subproblem time\t Optimality time\tArgmax time\t Reduce time\t"
-				"UB Estimate\tError\tCI-L\tCI-U\tOutcomes\n");
+		fprintf(soln, "Replication\tIterations\tOpt estimate\tTotal time\tMaster time\t Subproblem time\t Optimality time\tArgmax time\t Reduce time\t"
+				"Eval Estimate\tError\tCI-L\tCI-U\tOutcomes\n");
 
 	fprintf(soln, "%d\t%d\t%.4lf\t%.4lf\t%.4lf\t%.4lf\t%.4lf\t%.4lf\t%.4lf", rep+1, cell->k, cell->incumbEst,cell->time->repTime, cell->time->masterAccumTime,
 			cell->time->subprobAccumTime, cell->time->optTestAccumTime, cell->time->argmaxAccumTime, cell->time->reduceTime);
@@ -216,7 +206,7 @@ void printOptimizationSummary(cellType *cell) {
 		fprintf(stdout, "*\n");
 	else
 		fprintf(stdout, "\n");
-	fprintf(stdout, "Lower bound estimate               : %f\n", cell->incumbEst);
+	fprintf(stdout, "Optimization value                 : %f\n", cell->incumbEst);
 	fprintf(stdout, "Total time                         : %f\n", cell->time->repTime);
 	fprintf(stdout, "Total time to solve master         : %f\n", cell->time->masterAccumTime);
 	fprintf(stdout, "Total time to solve subproblems    : %f\n", cell->time->subprobAccumTime);

@@ -24,7 +24,7 @@ int solveMaster(numType *num, sparseVector *dBar, cellType *cell) {
 
 	tic = clock();
 	/* solve the master problem */
-	if ( solveProblem(cell->master->lp, cell->master->name, config.MASTER_TYPE, cell->master->mar, cell->master->mac, &status) ) {
+	if ( solveProblem(cell->master->lp, cell->master->name, config.MASTER_TYPE, &status) ) {
 		writeProblem(cell->master->lp, "error.lp");
 		errMsg("algorithm", "solveMaster", "failed to solve the master problem", 0);
 		return 1;
@@ -52,8 +52,9 @@ int solveMaster(numType *num, sparseVector *dBar, cellType *cell) {
 		cell->candidEst += getPrimalPoint(cell->master->lp, num->cols);
 		cell->gamma = cell->candidEst - cell->incumbEst;
 	}
-	else
+	else {
 		cell->candidEst = getObjective(cell->master->lp, PROB_LP);
+	}
 
 	return 0;
 }//END solveMaster()
@@ -209,14 +210,6 @@ oneProblem *newMaster(oneProblem *orig, double lb, omegaType *omega) {
 
 int checkImprovement(probType *prob, cellType *cell, int candidCut) {
 
-	/* Calculate height at both the candidate and incumbent solution need to be computed. */
-	cell->candidEst = vXvSparse(cell->candidX, prob->dBar) +
-			maxCutHeight(cell->cuts, cell->candidX, prob->num->cols, 0);
-
-#if defined(ALGO_CHECK)
-	printf("Incumbent estimate = %lf; Candidate estimate = %lf\n", cell->incumbEst, cell->candidEst);
-#endif
-
 	/* If we see considerable improvement, then change the incumbent */
 	if ( (cell->candidEst - cell->incumbEst) <= config.R1*cell->gamma ) {
 		/* when we find an improvement, then we need to replace the incumbent x with candidate x */
@@ -225,8 +218,8 @@ int checkImprovement(probType *prob, cellType *cell, int candidCut) {
 			return 1;
 		}
 
-		cell->cuts->vals[cell->iCutIdx[0]]->isIncumb = false;
-		cell->iCutIdx[0] = candidCut;
+		cell->cuts->vals[cell->iCutIdx]->isIncumb = false;
+		cell->iCutIdx = candidCut;
 		cell->cuts->vals[candidCut]->isIncumb = true;
 
 		cell->incumbChg = false;

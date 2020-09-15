@@ -67,7 +67,7 @@ int evaluate(FILE *soln, stocType *stoc, probType **prob, cellType *cell, dVecto
 			}
 		}
 
-		if ( solveProblem(cell->subprob->lp, cell->subprob->name, cell->subprob->type, cell->subprob->mar, cell->subprob->mac, &status) ) {
+		if ( solveProblem(cell->subprob->lp, cell->subprob->name, cell->subprob->type, &status) ) {
 			if ( status == STAT_INFEASIBLE ) {
 				/* subproblem is infeasible */
 				printf("Warning:: Subproblem is infeasible: need to create feasibility cut.\n");
@@ -82,7 +82,7 @@ int evaluate(FILE *soln, stocType *stoc, probType **prob, cellType *cell, dVecto
 		/* use subproblem objective and compute evaluation statistics */
 		obj = getObjective(cell->subprob->lp, PROB_LP);
 
-#if defined(ALGO_CHECK)
+#if defined(EVAL_CHECK)
 		writeProblem(cell->subprob->lp, "evalSubprob.lp");
 		printf("Evaluation objective function = %lf.\n", obj);
 #endif
@@ -121,7 +121,7 @@ void printEvaluationSummary(FILE *soln, double mean, double stdev, int cnt) {
 
 	/* Write the evaluation results to the summary file */
 	fprintf(soln, "\n-------------------------------------------- Evaluation --------------------------------------------\n\n");
-	fprintf(soln, "Upper bound estimate               : %lf\n", mean);
+	fprintf(soln, "Out-of-sample estimate             : %lf\n", mean);
 	fprintf(soln, "Error in estimation                : %lf\n", 3.29 * stdev / mean);
 	fprintf(soln, "Confidence interval at 95%%         : [%lf, %lf]\n", mean - 1.645 * stdev, mean + 1.645 * stdev);
 	fprintf(soln, "Number of observations             : %d\n", cnt);
