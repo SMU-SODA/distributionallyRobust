@@ -110,7 +110,7 @@ MAX_OBS 100
 
 // ******************** Distribution robust parameters ********************
 // Type of ambiguity set: Risk-neutral (0), Moment-matching (1)
-DRO_TYPE 1
+DRO_TYPE 0
 
 // Parameters associated with the ambiguity set
 DRO_PARAM 0.05

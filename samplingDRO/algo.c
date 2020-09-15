@@ -85,7 +85,7 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 			fprintf(detailedResults,"\n");
 	}
 
-	printf("\n\nSuccessfully completed the DR-SD algorithm.\n");
+	printf("\n\nSuccessfully completed the DR-SD algorithm with %s setting.\n", (config.DRO_TYPE == RISK_NEUTRAL) ? "Risk-neutral" : "Moment Ambiguity");
 
 	/* release structures and close solver environment */
 	if (cell) freeCellType(cell);

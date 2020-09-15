@@ -70,10 +70,17 @@ int formOptCut(probType *prob, cellType *cell, dVector Xvect) {
 		cell->omega->probs[obs] = 0.01;
 	}
 
-	/* 2. Solve the distribution separation problem */
-	if ( obtainProbDist(cell->sep, cell->omega->probs, spObj, cell->omega->cnt) ) {
-		errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
-		return 1;
+	/* 2. Solve the distribution separation problem if we are not solving the risk-neutral version. */
+	if ( config.DRO_TYPE == RISK_NEUTRAL && cell->k == 1)  {
+		for ( obs = 0; obs < cell->omega->cnt; obs++ ) {
+			cell->omega->probs[obs] = 1/(double) cell->omega->cnt;
+		}
+	}
+	else  {
+		if ( obtainProbDist(cell->sep, cell->omega->probs, spObj, cell->omega->cnt) ) {
+			errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
+			return 1;
+		}
 	}
 
 	/* 3. Compute the aggregated cut coefficients */
