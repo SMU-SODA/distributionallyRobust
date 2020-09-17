@@ -13,7 +13,10 @@ MASTER_TYPE 0
 // OPTIMALITY GAP
 EPSILON 0.001
 
-// ******************** Regularized L-shaped method ********************
+// Number of iterations after which incumbent cut is reevaluated.
+TAU 2
+
+// ******************** Regularized method for DRO with fixed sample ********************
 // The Minimum value of the cell->quad_scalar.
 MIN_QUAD_SCALAR 1
 

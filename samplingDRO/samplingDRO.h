@@ -39,6 +39,7 @@ typedef struct{
 	int		MASTER_TYPE;		/* type of master problem */
 	double	EPSILON;			/* Optimality gap */
 
+	int 	TAU;				/* Number of iterations after which incumbent cut is reevaluated */
 	int		CUT_MULT;			/* Determines the number of cuts to be used for approximate */
 
 	double	MIN_QUAD_SCALAR;	/* Minimum value for regularizing parameter */
@@ -62,6 +63,7 @@ typedef struct{
 
 typedef struct {
 	int		ck;					/* Iteration when the cut was generated */
+	int 	numSamples;			/* Number of observations used in computing the cut */
 	double  alpha;              /* scalar value for the right-hand side */
 	dVector  beta;              /* coefficients of the master problems's primal variables */
 	bool	isIncumb;			/* indicates if the cut is an incumbent cut */
@@ -134,10 +136,11 @@ typedef struct {
 
 	dVector     incumbX;			/* incumbent master solution */
 	double      incumbEst;			/* estimate at incumbent solution */
-	double		gamma;				/* Improvement in obejctive function */
+	double		gamma;				/* Improvement in objective function */
 	double 		quadScalar; 		/* the proximal parameter/quadratic scalar 'sigma' */
 	bool        incumbChg;			/* set to be true if the incumbent solution has changed in an iteration */
 	int     	iCutIdx;			/* index of incumbent cuts in cell->cuts structure. */
+	int         iCutUpdt;			/* iteration when incumbent cut was last updated. */
 	dVector		piM;				/* Dual vector for the master problem (original and the cuts) */
 
     int      	maxCuts;            /* maximum number of cuts to be used*/
@@ -170,13 +173,17 @@ void freeCellType(cellType *cell);
 
 /* algo.c */
 int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cString probName);
-int solveFixedDROCell(stocType *stoc, probType **prob, cellType *cell);
+int solveFixedDROCell(probType **prob, cellType *cell);
+int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell);
+
+
+/* optimal.c */
 bool optimal(probType *prob, cellType *cell);
 
 /* master.c */
 int solveMaster(numType *num, sparseVector *dBar, cellType *cell);
 int checkImprovement(probType *prob, cellType *cell, int candidCut);
-int replaceIncumbent(probType *prob, cellType *cell);
+int replaceIncumbent(cellType *cell, double candidEst, int numCols);
 int constructQP(probType *prob, cellType *cell, dVector incumbX, double quadScalar);
 int changeQPproximal(LPptr lp, int numCols, double sigma, int numEta);
 int changeQPrhs(probType *prob, cellType *cell, dVector xk);
@@ -195,14 +202,14 @@ int chgRHSwObserv(LPptr lp, numType *num, coordType *coord, dVector observ, dVec
 int chgObjxwObserv(LPptr lp, numType *num, coordType *coord, dVector cost, iVector indices, dVector observ);
 
 /* cuts.c */
-int formOptCut(probType *prob, cellType *cell, dVector Xvect);
+int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect);
 oneCut *newCut(int numX, int currentIter, int numObs);
 cutsType *newCuts(int maxCuts);
-double maxCutHeight(cutsType *cuts, dVector xk, int betaLen, int obsID);
-double cutHeight(oneCut *cut, dVector xk, int betaLen);
-int dropCut(oneProblem *master, cutsType *cuts, int cutIdx, iVector iCutIdx, int obsID);
-int reduceCut(oneProblem *master, cutsType *cuts, dVector vectX, dVector piM, int betaLen, iVector iCutIdx,
-		omegaType *omega, int obsID);
+double maxCutHeight(cutsType *cuts, int currIter, dVector xk, int betaLen, double lb, bool scale);
+double cutHeight(oneCut *cut, int currIter, dVector xk, int betaLen, double lb, bool scale);
+int computeIstar(numType *num, coordType *coord, sigmaType *sigma, deltaType *delta, dVector piCbarX, dVector Xvect,
+		int obs, double *argmax);
+int reduceCuts();
 void freeOneCut(oneCut *cut);
 void freeCutsType(cutsType *cuts, bool partial);
 
@@ -212,6 +219,7 @@ int stochasticUpdates(numType *num, coordType *coord, sparseVector *bBar, sparse
 lambdaType *newLambda(int numLambda);
 sigmaType *newSigma(int numSigma);
 deltaType *newDelta(int numDelta);
+int calcOmega(dVector observ, int begin, int end, omegaType *omega, bool *newOmegaFlag, double TOLERANCE);
 int calcLambda(numType *num, coordType *coord, dVector Pi, lambdaType *lambda, bool *newLambdaFlag);
 int calcSigma(numType *num, coordType *coord, sparseVector *bBar, sparseMatrix *CBar, dVector pi, double mubBar,
 		int idxLambda, bool newLambdaFlag, int currentIter, sigmaType *sigma);

@@ -13,7 +13,7 @@
 
 extern configType config;
 
-int formOptCut(probType *prob, cellType *cell, dVector Xvect) {
+int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 	oneCut *cut;
 	dVector piS, alpha, *beta, piCBar, spObj;
 	sparseMatrix COmega;
@@ -22,14 +22,11 @@ int formOptCut(probType *prob, cellType *cell, dVector Xvect) {
 	int obs, cutID = -1;
 
 	/* Allocate memory and initializations */
-	if ( !(piS = (dVector) arr_alloc(prob->num->rows+1, double)) )
-		errMsg("allocation", "formOptCut", "piS", 0);
-	if ( !(spObj = (dVector) arr_alloc(cell->omega->cnt, double)) )
-		errMsg("allocation", "formOptCut", "spObj", 0);
-	if ( !(alpha = (dVector) arr_alloc(cell->omega->cnt, double)) )
-		errMsg("allocation", "formOptCut", "alpha", 0);
-	if ( !(beta = (dVector *) arr_alloc(cell->omega->cnt, double)) )
-		errMsg("allocation", "formOptCut", "beta", 0);
+	piS = (dVector) arr_alloc(prob->num->rows+1, double);
+	spObj = (dVector) arr_alloc(cell->omega->cnt, double);
+	alpha = (dVector) arr_alloc(cell->omega->cnt, double);
+	beta = (dVector *) arr_alloc(cell->omega->cnt, double);
+
 	bOmega.cnt = prob->num->rvbOmCnt; bOmega.col = prob->coord->rvbOmRows;
 	COmega.cnt = prob->num->rvCOmCnt; COmega.col = prob->coord->rvCOmCols; COmega.row = prob->coord->rvCOmRows;
 	cut = newCut(prob->num->prevCols, cell->k, cell->omega->cnt);
@@ -116,6 +113,120 @@ int formOptCut(probType *prob, cellType *cell, dVector Xvect) {
 	return 0;
 }//END formOptCut()
 
+int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar) {
+	oneCut 	*cut;
+	dVector piS, spObj, piCbarX, beta;
+	double	mubBar, alpha;
+	int    	cutIdx;
+	clock_t tic;
+
+	/* allocate memory to hold a subproblem duals, estimated objective function and the new cut */
+	piS = (dVector) arr_alloc(prob->num->rows+1, double);
+	spObj = (dVector) arr_alloc(cell->omega->cnt, double);
+	piCbarX = (dVector) arr_alloc(cell->sigma->cnt, double);
+	beta = (dVector) arr_alloc(prob->num->prevCols+1, double);
+	cut = newCut(prob->num->prevCols, cell->omega->cnt, cell->k);
+
+	/*********************************** 1. Subproblem solve and update resource function approximation **************************************/
+	/* (a) Construct the subproblem with input observation and master solution, solve the subproblem, and complete stochastic updates */
+	if ( solveSubprob(prob, cell->subprob, Xvect, cell->omega->vals[obsStar], &cell->spFeasFlag, &cell->time->subprobIter, piS, &mubBar) ) {
+		errMsg("algorithm", "solveAgents", "failed to solve the subproblem", 0);
+		goto TERMINATE;
+	}
+
+	if ( ! cell->spFeasFlag ) {
+		printf("Subproblem is infeasible, adding feasibility cut to the master.\n");
+		goto TERMINATE;
+	}
+
+	/* Increment the number of subproblems solved during algorithm */
+	cell->LPcnt++;
+	spObj[obsStar] = getObjective(cell->subprob->lp, cell->subprob->type);
+
+	/* (b) Update the stochastic elements in the problem */
+	tic = clock();
+	cut->iStar[obsStar] = stochasticUpdates(prob->num, prob->coord, prob->bBar, prob->Cbar, cell->lambda, cell->sigma, cell->delta,
+			cell->omega, cell->k, piS, mubBar);
+	cell->time->argmaxIter += ((double) (clock() - tic))/CLOCKS_PER_SEC;
+
+#ifdef STOCH_CHECK
+	obj = sigma->vals[status].pib - vXv(sigma->vals[status].piC, Xvect, prob->coord->CCols, prob->num->cntCcols);
+	obj += delta->vals[sigma->lambdaIdx[status]][omegaIdx].pib - vXv(delta->vals[sigma->lambdaIdx[status]][omegaIdx].piC,
+			omega->vals[omegaIdx], prob->coord->rvCOmCols, prob->num->rvCOmCnt);
+	printf("Objective function estimate    = %lf\n", obj);
+#endif
+
+	/* (c) Obtain the best dual vertex using the argmax procedure and the corresponding objective function estimate. */
+	double argmax;
+	int istar;
+	/* Pre-compute pi x Cbar x x as it is independent of observations */
+	for (int c = 0; c < cell->sigma->cnt; c++)
+		piCbarX[c] = vXv(cell->sigma->vals[c].piC, Xvect, prob->coord->CCols, prob->num->cntCcols);
+
+	/* Loop through the observations to perform the argmax procedure. */
+	for (int obs = 0; obs < cell->omega->cnt; obs++) {
+		/* identify the maximal Pi for each observation */
+		istar = computeIstar(prob->num, prob->coord, cell->sigma, cell->delta, piCbarX, Xvect,
+				obs, &argmax);
+		if (istar < 0) {
+			errMsg("algorithm", "SDCut", "failed to identify maximal Pi for an observation", 0);
+			goto TERMINATE;
+		}
+		cut->iStar[obs] = istar;
+		spObj[obs] = argmax;
+	}
+
+	/*********************************** 2 Obtain the maximal probability distribution **************************************/
+	/* Solve the distribution separation problem if we are not solving the risk-neutral version. */
+	if ( config.DRO_TYPE == RISK_NEUTRAL && cell->k == 1)  {
+		for ( int obs = 0; obs < cell->omega->cnt; obs++ ) {
+			cell->omega->probs[obs] = 1/(double) cell->omega->cnt;
+		}
+	}
+	else  {
+		if ( obtainProbDist(cell->sep, cell->omega->probs, spObj, cell->omega->cnt) ) {
+			errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
+			return 1;
+		}
+	}
+
+	/*********************************** 3. Create the affine function using the stochastic elements **************************************/
+	/* (a) Create an affine lower bound */
+	for ( int obs = 0; obs < cell->omega->cnt; obs++ ) {
+	alpha += cell->sigma->vals[cut->iStar[obs]].pib * cell->omega->probs[obs];
+	alpha += cell->delta->vals[cell->sigma->lambdaIdx[cut->iStar[obs]]][obs].pib * cell->omega->probs[obs];
+
+	for (int c = 1; c <= prob->num->cntCcols; c++)
+		beta[prob->coord->CCols[c]] += cell->sigma->vals[cut->iStar[obs]].piC[c] * cell->omega->probs[obs];
+	for (int c = 1; c <= prob->num->rvCOmCnt; c++)
+		beta[prob->coord->rvCols[c]] += cell->delta->vals[cell->sigma->lambdaIdx[cut->iStar[obs]]][obs].piC[c] * cell->omega->probs[obs];
+	}
+
+#if defined(STOCH_CHECK)
+	/* Solve the subproblem to verify if the argmax operation yields a lower bound */
+	for ( int cnt = 0; cnt < cell->omega->cnt; cnt++ ) {
+		/* (a) Construct the subproblem with input observation and master solution, solve the subproblem, and complete stochastic updates */
+		if ( solveSubprob(prob[1], cell->subprob, Xvect, cell->basis, cell->lambda, cell->sigma, cell->delta, config.MAX_ITER,
+				cell->omega, cnt, newOmegaFlag, cell->k, config.TOLERANCE, &cell->spFeasFlag, NULL,
+				&cell->time.subprobIter, &cell->time.argmaxIter) < 0 ) {
+			errMsg("algorithm", "formSDCut", "failed to solve the subproblem", 0);
+			return -1;
+		}
+		printf("Subproblem solve for omega-%d = %lf\n", cnt, getObjective(cell->subprob->lp, PROB_LP));
+	}
+#endif
+
+	/* (b) Add cut to the structure and master problem  */
+	if ( (cutIdx = addCut2Master(cell, cell->cuts, cut, prob->num->prevCols, 0)) < 0 ) {
+		errMsg("algorithm", "formSDCut", "failed to add the new cut to master problem", 0);
+		goto TERMINATE;
+	}
+
+	return cutIdx;
+	TERMINATE:
+	return -1;
+}//END formStochasticCut()
+
 cutsType *newCuts(int maxCuts) {
 	cutsType *cuts;
 
@@ -150,112 +261,78 @@ oneCut *newCut(int numX, int currentIter, int numObs) {
 }//END newCut
 
 /* This function loops through a set of cuts and find the highest cut height at the specified position x */
-double maxCutHeight(cutsType *cuts, dVector xk, int betaLen, int obsID) {
+double maxCutHeight(cutsType *cuts, int currIter, dVector xk, int betaLen, double lb, bool scale) {
 	double Sm = -INF, ht = 0.0;
 	int cnt;
 
 	for (cnt = 0; cnt < cuts->cnt; cnt++) {
-		if ( cuts->vals[cnt]->omegaID == obsID ) {
-			ht = cutHeight(cuts->vals[cnt], xk, betaLen);
-			if (Sm < ht)
-				Sm = ht;
+		ht = cutHeight(cuts->vals[cnt], currIter, xk, betaLen, lb, scale);
+		if (Sm < ht) {
+			Sm = ht;
 		}
 	}
 
 	return Sm;
 }//END maxCutHeight
 
-/* This function calculates and returns the height of a given cut at a given X. */
-double cutHeight(oneCut *cut, dVector xk, int betaLen) {
+/* This function calculates and returns the height of a given cut at a given X.  It includes the k/(k-1) update, but does not include
+ * the coefficients due to the cell. */
+double cutHeight(oneCut *cut, int currIter, dVector xk, int betaLen, double lb, bool scale) {
 	double height;
+	double t_over_k = ((double) cut->numSamples / (double) currIter);
 
 	/* A cut is calculated as alpha - beta x X */
 	height = cut->alpha - vXv(cut->beta, xk, NULL, betaLen);
 
+	if ( scale ) {
+		/* Weight cut based on number of observations used to form it */
+		height *= t_over_k;
+
+		/* Updated for optimality cut height*/
+		height += (1 - t_over_k) * lb;
+	}
+
 	return height;
 }//END cutHeight()
 
+/*This function loops through all the dual vectors found so far and returns the index of the one which satisfies the expression:
+ * 				argmax { Pi x (R - T x X) | all Pi }
+ * where X, R, and T are given.  It is calculated in this form:
+ * 				Pi x bBar + Pi x bomega + (Pi x Cbar) x X + (Pi x Comega) x X.
+ * Since the Pi's are stored in two different structures (sigma and delta), the index to the maximizing Pi is actually a structure
+ * containing two indices.  (While both indices point to pieces of the dual vectors, sigma and delta may not be in sync with one
+ * another due to elimination of non-distinct or redundant vectors. */
+int computeIstar(numType *num, coordType *coord, sigmaType *sigma, deltaType *delta, dVector piCbarX, dVector Xvect,
+		int obs, double *argmax) {
+	double 	arg;
+	int 	cnt, maxCnt, lambdaIdx;
 
-/* This function will remove the oldest cut whose corresponding dual variable is zero (thus, a cut which was slack in last solution). */
-int reduceCut(oneProblem *master, cutsType *cuts, dVector vectX, dVector piM, int betaLen, iVector iCutIdx,
-		omegaType *omega, int obsID) {
-	double 	height, minHeight;
-	int 	oldestCut, idx;
 
-	oldestCut = cuts->cnt-1;
+	*argmax = -DBL_MAX; maxCnt = 0;
+	/* Run through the list of basis to choose the one which provides the best lower bound */
+	for ( cnt = 0; cnt < sigma->cnt; cnt++ ) {
+		lambdaIdx = sigma->lambdaIdx[cnt];
+		arg = 0.0;
 
-	/* identify the oldest loose cut */
-	for (idx = 0; idx < cuts->cnt; idx++) {
-		if ( idx == iCutIdx[obsID] || cuts->vals[idx]->rowNum < 0 || cuts->vals[idx]->omegaID != obsID )
-			/* avoid dropping incumbent cut and newly added cuts */
-			continue;
+		arg += sigma->vals[cnt].pib + delta->vals[lambdaIdx][obs].pib - piCbarX[cnt];
+		arg -= vXv(delta->vals[lambdaIdx][obs].piC, Xvect, coord->rvCOmCols, num->rvCOmCnt);
 
-		if ( cuts->vals[idx]->ck < cuts->vals[oldestCut]->ck &&
-				DBL_ABS(piM[cuts->vals[idx]->rowNum + 1]) <= config.TOLERANCE ) {
-			oldestCut = idx;
+		if (arg > (*argmax)) {
+			*argmax = arg;
+			maxCnt = cnt;
 		}
 	}
 
-	/* if the oldest loose cut is the most recently added cut, then the cut with minimum cut height will be dropped */
-	if ( oldestCut == cuts->cnt-1 ) {
-		minHeight = -INF; oldestCut = 0;
-
-		for (idx = 0; idx < cuts->cnt; idx++) {
-			if (idx == iCutIdx[obsID] || cuts->vals[idx]->omegaID != obsID )
-				continue;
-
-			height = cutHeight(cuts->vals[idx], vectX, betaLen);
-			if (height < minHeight) {
-				minHeight = height;
-				oldestCut = idx;
-			}
-		}
-	}
-
-	/* drop the selected cut and swap the last cut into its place */
-	if ( dropCut(master, cuts, oldestCut, iCutIdx, obsID) ){
-		errMsg("algorithm", "reduceCuts", "failed to drop a cut", 0);
+	if ( (*argmax == -DBL_MAX ) )
 		return -1;
-	}
+	else
+		return maxCnt;
+}//END computeIstar
 
-	return oldestCut;
-}//END reduceCuts()
-
-/* This function removes a cut from both the cutType structure and the master problem constraint matrix.  In the cuts->vals array, the last
- * cut is swapped into the place of the exiting cut.  In the constraint matrix, the row is deleted, and the row numbers of all constraints
- * below it are decremented. */
-int dropCut(oneProblem *master, cutsType *cuts, int cutIdx, iVector iCutIdx, int obsID) {
-	int idx, deletedRow;
-
-	deletedRow = cuts->vals[cutIdx]->rowNum;
-	/* Get rid of the indexed cut on the solver */
-	if (  removeRow(master->lp, deletedRow, deletedRow) ) {
-		errMsg("solver", "dropCut", "failed to remove a row from master problem", 0);
-		return 1;
-	}
-	freeOneCut(cuts->vals[cutIdx]);
-
-	/* move the last cut to the deleted cut's position (structure) */
-	cuts->vals[cutIdx] = cuts->vals[--cuts->cnt];
-
-	/* if the swapped cut happens to be the incumbent cut, then update its index */
-	if ( cutIdx >= cuts->cnt)
-		printf("What is going on?\n");
-	if ( cuts->vals[cutIdx]->isIncumb ) {
-		iCutIdx[cuts->vals[cutIdx]->omegaID] = cutIdx;
-	}
-
-	for (idx = 0; idx < cuts->cnt; idx++) {
-		if (cuts->vals[idx]->rowNum > deletedRow)
-			--cuts->vals[idx]->rowNum;
-	}
-
-	/* decrease the number of rows on solver */
-	master->mar--;
+int reduceCuts() {
 
 	return 0;
-}//END dropCut()
-
+}//END reduceCuts()
 
 void freeOneCut(oneCut *cut) {
 

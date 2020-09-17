@@ -18,6 +18,13 @@ int solveMaster(numType *num, sparseVector *dBar, cellType *cell) {
 	int 	status;
 	clock_t	tic;
 
+	if ( config.SAMPLING_TYPE == 2 ) {
+		if( changeEtaCol(cell->master->lp, num->rows, num->cols, cell->k, cell->cuts) ) {
+			errMsg("algorithm", "solveQPMaster", "failed to change the eta column coefficients", 0);
+			return 1;
+		}
+	}
+
 #if defined(ALGO_CHECK)
 	writeProblem(cell->master->lp,"cellMaster.lp");
 #endif
@@ -208,47 +215,64 @@ oneProblem *newMaster(oneProblem *orig, double lb, omegaType *omega) {
 
 }//END newMaster()
 
-int checkImprovement(probType *prob, cellType *cell, int candidCut) {
+int addCut2Master(cellType *cell, cutsType *cuts, oneCut *cut, int lenX, int obsID) {
+	iVector 	indices;
+	int 	cnt;
+	static int cummCutNum = 0;
 
-	/* If we see considerable improvement, then change the incumbent */
-	if ( (cell->candidEst - cell->incumbEst) <= config.R1*cell->gamma ) {
-		/* when we find an improvement, then we need to replace the incumbent x with candidate x */
-		if ( replaceIncumbent(prob, cell) ) {
-			errMsg("algorithm", "checkImprovement", "failed to replace incumbent solution with candidate", 0);
+	/* If it is optimality cut being added, check to see if there is room for the candidate cut, else drop a cut */
+	if (cuts->cnt == cell->maxCuts) {
+		/* make room for the latest cut */
+		if( reduceCuts() < 0 ) {
+			errMsg("algorithm", "addCut2Master", "failed to add reduce cuts to make room for candidate cut", 0);
+			return -1;
+		}
+	}
+
+	if ( config.MASTER_TYPE == PROB_QP )
+		cut->alphaIncumb = cut->alpha - vXv(cut->beta, cell->incumbX, NULL, lenX);
+
+	if (!(indices = arr_alloc(lenX + 1, int)))
+		errMsg("Allocation", "addcut2Master", "fail to allocate memory to coefficients of beta",0);
+	for (cnt = 1; cnt <= lenX; cnt++)
+		indices[cnt] = cnt - 1;
+	indices[0] = lenX+cut->omegaID;
+
+	/* Add the cut to the cell cuts structure and assign a row number. */
+	cuts->vals[cuts->cnt] = cut;
+	cut->rowNum = cell->master->mar++;
+
+	/* Set up the cut name */
+	sprintf(cut->name, "cut_%04d", cummCutNum++);
+
+	/* Add the row in the solver */
+	if ( addRow(cell->master->lp, lenX + 1, cut->alphaIncumb, GE, 0, indices, cut->beta, cut->name) ) {
+		errMsg("solver", "addcut2Master", "failed to add new row to problem in solver", 0);
+		return -1;
+	}
+
+	mem_free(indices);
+	return cuts->cnt++;
+}//END addCuts2Master()
+
+/* This function performs the updates on all the coefficients of eta in the master problem constraint matrix.  During every iteration,
+ * each of the coefficients on eta are increased, so that the effect of the cut on the objective function is decreased. */
+int changeEtaCol(LPptr lp, int numRows, int numCols, int k, cutsType *cuts) {
+	double	coef[1];
+	int 	c;
+
+	for (c = 0; c < cuts->cnt; c++){
+		/* Currently both incumbent and candidate cuts are treated similarly, and sunk as iterations proceed */
+		coef[0] = (double) (k) / (double) cuts->vals[c]->numSamples;         // coefficient k/j of eta column
+
+		if ( changeCol(lp, numCols, coef, cuts->vals[c]->rowNum, cuts->vals[c]->rowNum+1) ) {
+			errMsg("solver", "changeEtaCol", "failed to change eta column in the stage problem", 0);
 			return 1;
 		}
-
-		cell->cuts->vals[cell->iCutIdx]->isIncumb = false;
-		cell->iCutIdx = candidCut;
-		cell->cuts->vals[candidCut]->isIncumb = true;
-
-		cell->incumbChg = false;
-		printf("+"); fflush(stdout);
 	}
 
 	return 0;
-}//END checkImprovement()
-
-int replaceIncumbent(probType *prob, cellType *cell) {
-
-	/* replace the incumbent solution with the candidate solution */
-	copyVector(cell->candidX, cell->incumbX, prob->num->cols, 1);
-	cell->incumbEst = cell->candidEst;
-
-	/* update the right-hand side and the bounds with new incumbent solution */
-	if ( constructQP(prob, cell, cell->incumbX, cell->quadScalar) ) {
-		errMsg("algorithm", "replaceIncumbent", "failed to change the right-hand side after incumbent change", 0);
-		return 1;
-	}
-
-	/* update the candidate cut as the new incumbent cut */
-	cell->incumbChg = true;
-
-	/* Since incumbent solution is now replaced by a candidate, we assume it is feasible now */
-	cell->infeasIncumb = false;
-
-	return 0;
-}//END replaceIncumbent()
+}//END changeEtaCol()
 
 int constructQP(probType *prob, cellType *cell, dVector incumbX, double quadScalar) {
 	int status;
@@ -401,44 +425,3 @@ int changeQPbds(LPptr lp, int numCols, dVector bdl, dVector bdu, dVector xk) {
 
 	return 0;
 }//END changeQPbds()
-
-int addCut2Master(cellType *cell, cutsType *cuts, oneCut *cut, int lenX, int obsID) {
-	iVector 	indices;
-	int 	cnt;
-	static int cummCutNum = 0;
-
-	/* If it is optimality cut being added, check to see if there is room for the candidate cut, else drop a cut */
-	if (cuts->cnt == cell->maxCuts) {
-		/* make room for the latest cut */
-		if( reduceCut(cell->master, cuts, cell->candidX, cell->piM, lenX, cell->iCutIdx,
-				cell->omega, obsID) < 0 ) {
-			errMsg("algorithm", "addCut2Master", "failed to add reduce cuts to make room for candidate cut", 0);
-			return -1;
-		}
-	}
-
-	if ( config.MASTER_TYPE == PROB_QP )
-		cut->alphaIncumb = cut->alpha - vXv(cut->beta, cell->incumbX, NULL, lenX);
-
-	if (!(indices = arr_alloc(lenX + 1, int)))
-		errMsg("Allocation", "addcut2Master", "fail to allocate memory to coefficients of beta",0);
-	for (cnt = 1; cnt <= lenX; cnt++)
-		indices[cnt] = cnt - 1;
-	indices[0] = lenX+cut->omegaID;
-
-	/* Add the cut to the cell cuts structure and assign a row number. */
-	cuts->vals[cuts->cnt] = cut;
-	cut->rowNum = cell->master->mar++;
-
-	/* Set up the cut name */
-	sprintf(cut->name, "cut_%04d", cummCutNum++);
-
-	/* Add the row in the solver */
-	if ( addRow(cell->master->lp, lenX + 1, cut->alphaIncumb, GE, 0, indices, cut->beta, cut->name) ) {
-		errMsg("solver", "addcut2Master", "failed to add new row to problem in solver", 0);
-		return -1;
-	}
-
-	mem_free(indices);
-	return cuts->cnt++;
-}//END addCuts2Master()

@@ -38,6 +38,33 @@ int stochasticUpdates(numType *num, coordType *coord, sparseVector *bBar, sparse
 	return sigmaIdx;
 }//END stochasticUpdates()
 
+/* This function obtains a new vector of realizations of the random variables. It compares the new vector with all previous vectors, looking for
+ * a duplication.  If it finds a duplicate, it returns the index of that duplicate; otherwise, it adds the vector to the list of distinct realizations
+ * and returns the index of that realization. Note that the simulated observation does not have contain one-norm, while the values stored in
+ * omegaType do */
+int calcOmega(dVector observ, int begin, int end, omegaType *omega, bool *newOmegaFlag, double TOLERANCE) {
+	int cnt;
+
+	/* Compare vector with all the previous observations */
+	for (cnt = 0; cnt < omega->cnt; cnt++) {
+		if (equalVector(observ, omega->vals[cnt], end-begin, TOLERANCE)) {
+			(*newOmegaFlag) = false;
+			return cnt;
+		}
+	}
+
+	/* Add the realization vector to the list */
+	omega->vals[omega->cnt] = duplicVector(observ, end-begin);
+	(*newOmegaFlag) = true;
+
+#ifdef STOCH_CHECK
+	printf("Observation (%d): ", *newOmegaFlag);
+	printVector(omega->vals[omega->cnt], end - begin, NULL);
+#endif
+
+	return omega->cnt++;
+}//calcOmega()
+
 /* This function stores a new lambda_pi dVector in the lambda structure.  Each lambda_pi represents only those dual variables whose rows in the
  * constraint matrix have random elements.  Thus  the (full) dual dVector, Pi,  passed to the function is converted into the sparse dVector lambda_pi.
  * This dVector is then compared with all previous lambda_pi dVectors, searching for a duplication. If a duplicate is found, the dVector is not added
