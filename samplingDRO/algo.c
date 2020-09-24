@@ -176,7 +176,7 @@ int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell) {
 		generateOmega(stoc, observ+1, config.TOLERANCE, &config.RUN_SEED[0], NULL);
 
 		/* (b) update omegaType with the latest observation. */
-		omegaIdx = calcOmega(observ, stoc->mean, cell->omega, &newOmegaFlag, config.TOLERANCE);
+		omegaIdx = calcOmega(observ, prob[1]->mean, cell->omega, &newOmegaFlag, config.TOLERANCE);
 
 		/******* 3. Solve the subproblem with candidate solution, form the candidate cut *******/
 		if ( (candidCut = formStochasticCut(prob[1], cell, cell->candidX, omegaIdx, newOmegaFlag)) < 0 ) {

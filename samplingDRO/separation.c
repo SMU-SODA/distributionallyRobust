@@ -59,7 +59,7 @@ int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector 
 int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag, int numMoments) {
 	iVector indices;
 	dVector rhsx;
-	int idx = 0;
+	int idx;
 
 	if ( config.SAMPLING_TYPE == 2 && newOmegaFlag ) {
 		/* Add a new column to the distribution separation problem corresponding to the latest observation */
@@ -73,12 +73,13 @@ int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVec
 
 		cmatind = (iVector) arr_alloc(nzcnt, int);
 		cmatval = (dVector) arr_alloc(nzcnt, double);
+		idx = 0;
 		for  ( int m = 0; m < numMoments; m++ ) {
-			for ( int rv = 0; rv < omega->numRV; rv++ ) {
-				cmatind[idx] = idx; idx++;
-				cmatval[idx] = stocMean[rv] + omega->vals[obsStar][rv+1];
-				cmatind[idx] = idx; idx++;
-				cmatval[idx] = -(stocMean[rv] + omega->vals[obsStar][rv+1]);
+			for ( int rv = 1; rv <= omega->numRV; rv++ ) {
+				cmatind[idx] = idx;
+				cmatval[idx++] = stocMean[rv] + omega->vals[obsStar][rv];
+				cmatind[idx] = idx;
+				cmatval[idx++] = -(stocMean[rv] + omega->vals[obsStar][rv]);
 			}
 		}
 		cmatind[idx] = idx;
@@ -95,12 +96,12 @@ int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVec
 		indices = (iVector) arr_alloc(2*numMoments*omega->numRV, int);
 		rhsx    = (dVector) arr_alloc(2*numMoments*omega->numRV+1, double);
 		idx = 0;
-		for ( int rv = 0; rv < omega->numRV; rv++ ) {
+		for ( int rv = 1; rv <= omega->numRV; rv++ ) {
 			for  ( int m = 0; m < numMoments; m++ ) {
 				indices[idx] = idx;
-				rhsx[idx++] = (stocMean[rv] + omega->sampleMean[rv+1])*(1 + config.DRO_PARAM);
+				rhsx[idx++] = omega->sampleMean[rv]*(1 + config.DRO_PARAM);
 				indices[idx] = idx;
-				rhsx[idx++] = -(stocMean[rv] + omega->sampleMean[rv+1])*(1 - config.DRO_PARAM);
+				rhsx[idx++] = -omega->sampleMean[rv]*(1 - config.DRO_PARAM);
 			}
 		}
 
@@ -231,11 +232,11 @@ oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, int numMoments
 
 		int rowID = 0;
 		for  ( int m = 0; m < numMoments; m++ ) {
-			for ( int rv = 0; rv < omega->numRV; rv++ ) {
+			for ( int rv = 1; rv <= omega->numRV; rv++ ) {
 				dist->matind[dist->numnz]   = rowID++;
-				dist->matval[dist->numnz++] = stocMean[rv] + omega->vals[obs][rv+1];
+				dist->matval[dist->numnz++] = stocMean[rv] + omega->vals[obs][rv];
 				dist->matind[dist->numnz]   = rowID++;
-				dist->matval[dist->numnz++] = -(stocMean[rv] + omega->vals[obs][rv+1]);
+				dist->matval[dist->numnz++] = -(stocMean[rv] + omega->vals[obs][rv]);
 				dist->matcnt[obs] += 2;
 			}
 		}
@@ -250,18 +251,18 @@ oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, int numMoments
 	/* Add rows to the problem: one for every random variable and moment */
 	int j = 0; offset = 0;
 	for ( int m = 0; m < numMoments; m++ ) {
-		for ( int rv = 0; rv < omega->numRV; rv++ ) {
-			sprintf(tempName,"mm_up[%d,%d]", m, rv);
+		for ( int rv = 1; rv <= omega->numRV; rv++ ) {
+			sprintf(tempName,"mm_up[%d,%d]", m, rv-1);
 			strcpy(dist->rstore + offset, tempName);
 			dist->rname[j] = dist->rstore + offset;
-			dist->rhsx[j]  = (stocMean[rv] + omega->sampleMean[rv+1])*(1 + config.DRO_PARAM);
+			dist->rhsx[j]  = (stocMean[rv] + omega->sampleMean[rv])*(1 + config.DRO_PARAM);
 			dist->senx[j++] = 'L';
 			offset += strlen(tempName) + 1;
 
-			sprintf(tempName,"mm_dw[%d,%d]", m, rv);
+			sprintf(tempName,"mm_dw[%d,%d]", m, rv-1);
 			strcpy(dist->rstore + offset, tempName);
 			dist->rname[j]  = dist->rstore + offset;
-			dist->rhsx[j]  = -(stocMean[rv] + omega->sampleMean[rv+1])*(1 - config.DRO_PARAM);
+			dist->rhsx[j]  = -(stocMean[rv] + omega->sampleMean[rv])*(1 - config.DRO_PARAM);
 			dist->senx[j++] = 'L';
 			offset += strlen(tempName) + 1;
 		}

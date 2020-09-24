@@ -48,7 +48,7 @@ int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmega
 	/* Since the problem already has the mean values on the right-hand side, remove it from the original observation */
 	observ[0] = 0.0;
 	for ( int m = 1; m <= omega->numRV; m++ ) {
-		observ[m] -= stocMean[m-1];
+		observ[m] -= stocMean[m];
 		observ[0] += observ[m];
 	}
 
@@ -74,7 +74,7 @@ int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmega
 
 	/* Update omega statistics: sample mean */
 	for ( int rv = 1; rv <= omega->numRV; rv++ ) {
-		omega->sampleMean[rv] = ((omega->numObs-1)*omega->sampleMean[rv] + (stocMean[rv-1] + omega->vals[cnt][rv]))/(double) omega->numObs;
+		omega->sampleMean[rv] = ( (omega->numObs-1)*omega->sampleMean[rv] + (stocMean[rv] + omega->vals[cnt][rv]))/(double) omega->numObs;
 	}
 
 #ifdef STOCH_CHECK
