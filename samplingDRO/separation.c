@@ -14,24 +14,13 @@
 extern configType config;
 extern cString outputDir;
 
-int obtainProbDist(oneProblem *sep, dVector probs, dVector spObj, int cnt) {
+int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag) {
 	int status;
 	dVector tempProbs;
 
-	/* For risk-neutral setting, there is no need to solve the distribution separation problem */
-	if ( config.DRO_TYPE == RISK_NEUTRAL ) {
-		return 0;
-	}
-
-	/* Based on the type of ambiguity set, update the distribution separation problem */
-	if ( config.DRO_TYPE == MOMENT_MATCHING ) {
-		if ( updtDistSepProb(sep, spObj, cnt)) {
-			errMsg("algorithm", "obtainProbDist", "failed to update the distribution separation problem", 0);
-			return 1;
-		}
-	}
-	else {
-		errMsg("algorithm", "obtainProbDist", "unknown distribution type requested in DRO_TYPE", 0);
+	/* Update the distribution separation problem */
+	if ( updtDistSepProb_MM(sep, stocMean, omega, spObj, obsStar, newOmegaFlag, 1) ) {
+		errMsg("separation", "updtDistSepProb_MM", "failed to update the distribution separation problem", 0);
 		return 1;
 	}
 
@@ -48,35 +37,90 @@ int obtainProbDist(oneProblem *sep, dVector probs, dVector spObj, int cnt) {
 	}
 
 	/* Obtain the extremal probability distribution */
-	tempProbs = (dVector) arr_alloc(cnt + 1, double);
-	if ( getPrimal(sep->lp, tempProbs, cnt) ) {
+	tempProbs = (dVector) arr_alloc(omega->cnt + 1, double);
+	if ( getPrimal(sep->lp, tempProbs, omega->cnt) ) {
 		errMsg("algorithm", "obtainProbDist", "failed to obtain the primal solution for master", 0);
 		return 1;
 	}
-	for ( int obs = 0; obs < cnt; obs++ ) {
-		probs[obs] = tempProbs[obs+1];
+	for ( int obs = 0; obs < omega->cnt; obs++ ) {
+		omega->probs[obs] = tempProbs[obs+1];
 	}
 	mem_free(tempProbs);
 
 #if defined(SEP_CHECK)
 	/* print the extremal probability distribution to the problem .*/
 	FILE *sFile = openFile(outputDir, "extremeProb.csv", "a");
-	printVector(probs-1, cnt, sFile);
+	printVector(omega->probs-1, omega->cnt, sFile);
 #endif
 
 	return 0;
 }//END obtainProbDist();
 
-int updtDistSepProb(oneProblem *sep, dVector spObj, int cnt) {
+int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag, int numMoments) {
 	iVector indices;
+	dVector rhsx;
+	int idx = 0;
 
-	indices = (iVector) arr_alloc(cnt, int);
-	for ( int n = 0; n < cnt; n++ ) {
+	if ( config.SAMPLING_TYPE == 2 && newOmegaFlag ) {
+		/* Add a new column to the distribution separation problem corresponding to the latest observation */
+		iVector cmatind;
+		dVector cmatval;
+
+		int nzcnt = 2*numMoments*omega->numRV + 1;
+		double bdu = 1.0, bdl = 0.0;
+		char colname[NAMESIZE];	sprintf(colname,"obs[%d]", obsStar);
+		int matbeg = 0;
+
+		cmatind = (iVector) arr_alloc(nzcnt, int);
+		cmatval = (dVector) arr_alloc(nzcnt, double);
+		for  ( int m = 0; m < numMoments; m++ ) {
+			for ( int rv = 0; rv < omega->numRV; rv++ ) {
+				cmatind[idx] = idx; idx++;
+				cmatval[idx] = stocMean[rv] + omega->vals[obsStar][rv+1];
+				cmatind[idx] = idx; idx++;
+				cmatval[idx] = -(stocMean[rv] + omega->vals[obsStar][rv+1]);
+			}
+		}
+		cmatind[idx] = idx;
+		cmatval[idx] = 1.0;
+
+		if ( addCol(sep->lp, nzcnt, 1.0, matbeg, cmatind, cmatval, bdu, bdl, colname) ) {
+			errMsg("solver", "updtDistSepProb", "failed to add a new column for latest observation", 0);
+			return 1;
+		}
+
+		mem_free(cmatind); mem_free(cmatval);
+
+		/* Update the right-hand side with sample mean information */
+		indices = (iVector) arr_alloc(2*numMoments*omega->numRV, int);
+		rhsx    = (dVector) arr_alloc(2*numMoments*omega->numRV+1, double);
+		idx = 0;
+		for ( int rv = 0; rv < omega->numRV; rv++ ) {
+			for  ( int m = 0; m < numMoments; m++ ) {
+				indices[idx] = idx;
+				rhsx[idx++] = (stocMean[rv] + omega->sampleMean[rv+1])*(1 + config.DRO_PARAM);
+				indices[idx] = idx;
+				rhsx[idx++] = -(stocMean[rv] + omega->sampleMean[rv+1])*(1 - config.DRO_PARAM);
+			}
+		}
+
+		if ( changeRHS(sep->lp, idx, indices, rhsx) ) {
+			errMsg("solver", "updtDistSepProb", "failed to change the cost coefficients in the solver", 0);
+			return 1;
+		}
+
+		mem_free(indices);
+		mem_free(rhsx);
+	}
+
+	/* Update the objective coefficients with the recourse function estimates */
+	indices = (iVector) arr_alloc(omega->cnt, int);
+	for ( int n = 0; n < omega->cnt; n++ ) {
 		indices[n] = n;
 	}
 
-	if ( changeObjx(sep->lp, cnt, indices, spObj) ) {
-		errMsg("solver", "solve_subprob", "failed to change the cost coefficients in the solver",0);
+	if ( changeObjx(sep->lp, omega->cnt, indices, spObj) ) {
+		errMsg("solver", "updtDistSepProb", "failed to change the cost coefficients in the solver", 0);
 		return 1;
 	}
 
@@ -88,14 +132,14 @@ int updtDistSepProb(oneProblem *sep, dVector spObj, int cnt) {
 	return 0;
 }//END updtDistSepProb()
 
-oneProblem *newDistSepProb(stocType *stoc, omegaType *omega) {
+oneProblem *newDistSepProb(dVector stocMean, omegaType *omega) {
 	oneProblem *dist = NULL;
 
 	if ( config.DRO_TYPE == RISK_NEUTRAL ) {
 		return dist;
 	}
 	else if ( config.DRO_TYPE == MOMENT_MATCHING ) {
-		dist = newDistSepProb_MM(omega, stoc->mean, 1);
+		dist = newDistSepProb_MM(stocMean, omega, 1);
 		if ( dist == NULL ) {
 			errMsg("solve", "newDistSepProb", "unknown distribution type requested in DRO_TYPE", 0);
 			return NULL;
@@ -109,7 +153,7 @@ oneProblem *newDistSepProb(stocType *stoc, omegaType *omega) {
 	return dist;
 }//END newDistSeparation()
 
-oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMoments) {
+oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, int numMoments) {
 	oneProblem *dist;
 	char tempName[NAMESIZE];
 	int offset;
@@ -120,7 +164,7 @@ oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMomen
 	/* Initialize essential elements */
 	dist->type   = PROB_LP;
 	dist->objsen = -1;                 				/* sense of the objective: 1 for minimization and -1 for maximization */
-	dist->mar 	 = 2*numMoments*omega->numRV+ 1;   	/* number of rows is equal to number of moments times number of random variables plus one */
+	dist->mar 	 = 2*numMoments*omega->numRV + 1;  	/* number of rows is equal to number of moments times number of random variables plus one */
 	dist->mac    = omega->cnt;						/* number of columns is equal to the number of observations */
 	dist->numInt = 0;                 				/* number of integer variables in the problem  */
 
@@ -173,20 +217,6 @@ oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMomen
 	strcpy(dist->name, "DistSepProb");           /* Copy problem name */
 	strcpy(dist->objname, "DistSep_Obj");     /* Copy objective name */
 
-	//	/* When using sequential sampling, we create the initial sample such that the
-	//	 * distribution separation problem is feasible. */
-	//	if ( config.SAMPLING_TYPE == 2 ) {
-	//		/* (a) Use the stoc file to generate observations */
-	//		generateOmega(stoc, observ, config.TOLERANCE, &config.RUN_SEED[0]);
-	//
-	//		/* (b) Since the problem already has the mean values on the right-hand side, remove it from the original observation */
-	//		for ( int m = 0; m < stoc->numOmega; m++ )
-	//			observ[m] -= stoc->mean[m];
-	//
-	//		/* (d) update omegaType with the latest observation. If solving with incumbent then this update has already been processed. */
-	//		cell->sample->omegaIdx[obs] = calcOmega(observ - 1, 0, prob[1]->num->numRV, cell->omega, &cell->sample->newOmegaFlag[obs], config.TOLERANCE);
-	//	}
-
 	/* Add columns to the problem: one for every scenario */
 	offset = 0;
 	for ( int obs = 0; obs < dist->mac; obs++ ) {
@@ -203,9 +233,9 @@ oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMomen
 		for  ( int m = 0; m < numMoments; m++ ) {
 			for ( int rv = 0; rv < omega->numRV; rv++ ) {
 				dist->matind[dist->numnz]   = rowID++;
-				dist->matval[dist->numnz++] = omega->vals[obs][rv+1];
+				dist->matval[dist->numnz++] = stocMean[rv] + omega->vals[obs][rv+1];
 				dist->matind[dist->numnz]   = rowID++;
-				dist->matval[dist->numnz++] = -omega->vals[obs][rv+1];
+				dist->matval[dist->numnz++] = -(stocMean[rv] + omega->vals[obs][rv+1]);
 				dist->matcnt[obs] += 2;
 			}
 		}
@@ -224,14 +254,14 @@ oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMomen
 			sprintf(tempName,"mm_up[%d,%d]", m, rv);
 			strcpy(dist->rstore + offset, tempName);
 			dist->rname[j] = dist->rstore + offset;
-			dist->rhsx[j]  = meanVector[rv]*(1 + config.DRO_PARAM);
+			dist->rhsx[j]  = (stocMean[rv] + omega->sampleMean[rv+1])*(1 + config.DRO_PARAM);
 			dist->senx[j++] = 'L';
 			offset += strlen(tempName) + 1;
 
 			sprintf(tempName,"mm_dw[%d,%d]", m, rv);
 			strcpy(dist->rstore + offset, tempName);
 			dist->rname[j]  = dist->rstore + offset;
-			dist->rhsx[j]  = meanVector[rv]*(1 - config.DRO_PARAM);
+			dist->rhsx[j]  = -(stocMean[rv] + omega->sampleMean[rv+1])*(1 - config.DRO_PARAM);
 			dist->senx[j++] = 'L';
 			offset += strlen(tempName) + 1;
 		}

@@ -138,10 +138,6 @@ int setupAlgo(oneProblem *orig, stocType *stoc, timeType *tim, probType ***prob,
 		goto TERMINATE;
 	}
 
-#if defined(SETUP_CHECK)
-	printDecomposeSummary(stdout, orig->name, tim, (*prob));
-#endif
-
 	/* ensure that we have a linear programs at all stages */
 	t = 0;
 	while ( t < tim->numStages ) {
@@ -206,7 +202,6 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	cell->infeasIncumb = false;
 
 	/* incumbent solution and estimates */
-
 	if (config.MASTER_TYPE == PROB_QP || config.SAMPLING_TYPE == 2 ) {
 		cell->incumbX   = duplicVector(xk, prob[0]->num->cols);
 
@@ -291,8 +286,7 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 		cell->incumbEst = cell->candidEst;
 		cell->quadScalar= config.MIN_QUAD_SCALAR;
 
-		mem_free(cell->iCutIdx);
-		cell->iCutIdx = (iVector) arr_alloc(cell->omega->cnt, int);
+		cell->iCutIdx = 0;
 
 		cell->incumbChg = true;
 	}
@@ -356,7 +350,6 @@ void freeCellType(cellType *cell) {
 		if (cell->sep) freeOneProblem(cell->sep);
 		if (cell->candidX) mem_free(cell->candidX);
 		if (cell->incumbX) mem_free(cell->incumbX);
-		if (cell->iCutIdx) mem_free(cell->iCutIdx);
 		if (cell->cuts) freeCutsType(cell->cuts, false);
 		if (cell->piM) mem_free(cell->piM);
 		if (cell->time) mem_free(cell->time);

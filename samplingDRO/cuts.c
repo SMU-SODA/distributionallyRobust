@@ -63,21 +63,12 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 #if defined(CUT_CHECK)
 		printf("Objective function value vs. estimate = (%lf v. %lf)\n", spObj[obs], alpha[obs] - vXv(beta[obs], Xvect, NULL, prob->num->prevCols));
 #endif
-
-		cell->omega->probs[obs] = 0.01;
 	}
 
 	/* 2. Solve the distribution separation problem if we are not solving the risk-neutral version. */
-	if ( config.DRO_TYPE == RISK_NEUTRAL && cell->k == 1)  {
-		for ( obs = 0; obs < cell->omega->cnt; obs++ ) {
-			cell->omega->probs[obs] = 1/(double) cell->omega->cnt;
-		}
-	}
-	else  {
-		if ( obtainProbDist(cell->sep, cell->omega->probs, spObj, cell->omega->cnt) ) {
-			errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
-			return 1;
-		}
+	if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, false, 0) ) {
+		errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
+		return 1;
 	}
 
 	/* 3. Compute the aggregated cut coefficients */
@@ -113,7 +104,7 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 	return 0;
 }//END formOptCut()
 
-int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar) {
+int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar, bool newOmegaFlag) {
 	oneCut 	*cut;
 	dVector piS, spObj, piCbarX, beta;
 	double	mubBar, alpha;
@@ -180,11 +171,11 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 	/* Solve the distribution separation problem if we are not solving the risk-neutral version. */
 	if ( config.DRO_TYPE == RISK_NEUTRAL && cell->k == 1)  {
 		for ( int obs = 0; obs < cell->omega->cnt; obs++ ) {
-			cell->omega->probs[obs] = 1/(double) cell->omega->cnt;
+			cell->omega->probs[obs] = cell->omega->weights[obs]/(double) cell->omega->cnt;
 		}
 	}
 	else  {
-		if ( obtainProbDist(cell->sep, cell->omega->probs, spObj, cell->omega->cnt) ) {
+		if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, obsStar, newOmegaFlag) ) {
 			errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
 			return 1;
 		}

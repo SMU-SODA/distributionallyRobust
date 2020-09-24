@@ -51,26 +51,25 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 			}
 		}
 
-		/* Update omega structure */
-		if ( config.SAMPLING_TYPE == 1 ) {
-			cell->omega->cnt = config.MAX_OBS;
-			setupSAA(stoc, NULL, &config.RUN_SEED[0], &cell->omega->vals, &cell->omega->probs, &cell->omega->cnt,
-					config.TOLERANCE);
-			for ( int m = 0; m < cell->omega->cnt; m++ )
-				for ( int n = 1; n <= stoc->numOmega; n++ )
-					cell->omega->vals[m][n] -= stoc->mean[n-1];
+		/* Setup the initial sample for omega structure */
+		if ( config.SAMPLING_TYPE != 0 ) {
+			cell->omega->numObs = config.MAX_OBS;
+			setupSAA(stoc, NULL, &config.RUN_SEED[0], cell->omega->vals, cell->omega->probs, cell->omega->weights,
+					&cell->omega->cnt, cell->omega->numObs, config.TOLERANCE);
+
+			refineOmega(cell->omega, stoc->mean);
 		}
 
 		/* Setup the distribution separation problem */
-		cell->sep = newDistSepProb(stoc, cell->omega);
+		cell->sep = newDistSepProb(prob[1]->mean, cell->omega);
 
 		tic = clock();
 		/* Use two-stage algorithm to solve the problem */
 		if ( config.SAMPLING_TYPE == 1) {
-		if ( solveFixedDROCell(prob, cell) ) {
-			errMsg("algorithm", "algo", "failed to solve a fixed sample DR cell", 0);
-			goto TERMINATE;
-		}
+			if ( solveFixedDROCell(prob, cell) ) {
+				errMsg("algorithm", "algo", "failed to solve a fixed sample DR cell", 0);
+				goto TERMINATE;
+			}
 		}
 		else if ( config.SAMPLING_TYPE == 2 ) {
 			if ( solveDRSDCell(stoc, prob, cell) ) {
@@ -168,35 +167,26 @@ int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell) {
 		bool newOmegaFlag = false;
 
 		/******* 1. Check for optimality of the current solution *******/
-		if ( config.MASTER_TYPE == PROB_QP ) {
-			if ( optimal(prob[0], cell) ) {
-				break;
-			}
+		if ( optimal(prob[0], cell) ) {
+			break;
 		}
 
 		/******* 2. Generate new observations, and add it to the set of observations *******/
 		/* (a) Use the stoc file to generate observations */
 		generateOmega(stoc, observ+1, config.TOLERANCE, &config.RUN_SEED[0], NULL);
 
-		/* (b) Since the problem already has the mean values on the right-hand side, remove it from the original observation */
-		for ( int m = 1; m <= stoc->numOmega; m++ )
-			observ[m] -= stoc->mean[m-1];
-
-		/* (c) update omegaType with the latest observation. */
-		omegaIdx = calcOmega(observ, 0, prob[1]->num->numRV, cell->omega, &newOmegaFlag, config.TOLERANCE);
-
-		/* (d) update the distribution separation problem to accommodate the latest observation */
-
+		/* (b) update omegaType with the latest observation. */
+		omegaIdx = calcOmega(observ, stoc->mean, cell->omega, &newOmegaFlag, config.TOLERANCE);
 
 		/******* 3. Solve the subproblem with candidate solution, form the candidate cut *******/
-		if ( (candidCut = formStochasticCut(prob[1], cell, cell->candidX, omegaIdx)) < 0 ) {
+		if ( (candidCut = formStochasticCut(prob[1], cell, cell->candidX, omegaIdx, newOmegaFlag)) < 0 ) {
 			errMsg("algorithm", "solveCell", "failed to add candidate cut", 0);
 			return 1;
 		}
 
 		/******* 4. Solve the subproblem with incumbent solution, update the incumbent cut *******/
 		if (((cell->k - cell->iCutUpdt) % config.TAU == 0 ) ) {
-			if ( (candidCut = formStochasticCut(prob[1], cell, cell->incumbX, omegaIdx)) < 0 ) {
+			if ( (candidCut = formStochasticCut(prob[1], cell, cell->incumbX, omegaIdx, false)) < 0 ) {
 				errMsg("algorithm", "solveCell", "failed to add candidate cut", 0);
 				return 1;
 			}

@@ -2,7 +2,7 @@
 TOLERANCE    0.001
 
 // Minimum iterations
-MIN_ITER   1
+MIN_ITER   100
 
 // Maximum number of iterations
 MAX_ITER   100
@@ -106,14 +106,14 @@ EVAL_SEED	4742397086462006
 
 // ******************** Sample Average Approximation ********************
 // Set to (0) for full sample, (1) if sample average approximation and (2) for sequential sample
-SAMPLING_TYPE 0
+SAMPLING_TYPE 2
 
 // Number of observations to be used to set the sample average approximation
-MAX_OBS 100
+MAX_OBS 10
 
 // ******************** Distribution robust parameters ********************
 // Type of ambiguity set: Risk-neutral (0), Moment-matching (1)
-DRO_TYPE 0
+DRO_TYPE 1
 
 // Parameters associated with the ambiguity set
 DRO_PARAM 0.05

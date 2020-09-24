@@ -14,28 +14,35 @@
 extern configType config;
 
 bool optimal(probType *prob, cellType *cell) {
-
-	double est = vXvSparse(cell->candidX, prob->dBar) + maxCutHeight(cell->cuts, cell->k, cell->candidX, prob->num->cols, prob->lb, false);
-
-#if defined(ALGO_CHECK)
-	printf("Current estimate = %lf; Previous estimate = %lf\n", est, cell->candidEst);
-#endif
-
+	double est;
 	clock_t tic = clock();
-	if ( config.SAMPLING_TYPE == 1 ) {
-		if ( cell->k > config.MIN_ITER ) {
+
+	if ( cell->k > config.MIN_ITER ) {
+		if ( config.SAMPLING_TYPE == 1 ) {
+			est = vXvSparse(cell->candidX, prob->dBar) + maxCutHeight(cell->cuts, cell->k, cell->candidX, prob->num->cols, prob->lb, false);
 			if (cell->candidEst >= 0){
-				cell->optFlag = (est < (1 + config.EPSILON) * cell->candidEst);
+				cell->optFlag = (est <= (1 + config.EPSILON) * cell->candidEst);
 			}
 			else
 				cell->optFlag = (est > (1 + config.EPSILON) * cell->candidEst);
 		}
+		else if ( config.SAMPLING_TYPE == 2 ) {
+			est = cell->candidEst;
+			if (cell->candidEst >= 0){
+				cell->optFlag = (est >= (1 - config.EPSILON) * cell->incumbEst);
+			}
+			else
+				cell->optFlag = (est > (1 + config.EPSILON) * cell->incumbEst);
+		}
+		else {
+			fprintf(stderr, "Optimality rules not set.\n");
+		}
 	}
-	else {
-		fprintf(stderr, "Optimality rules not set.\n");
-	}
-
 	cell->time->optTestIter += ((double) (clock() - tic))/CLOCKS_PER_SEC;
+
+#if defined(ALGO_CHECK)
+	printf("Current estimate = %lf; Previous estimate = %lf\n", est, cell->candidEst);
+#endif
 
 	return cell->optFlag;
 }//END optimal()

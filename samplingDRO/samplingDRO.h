@@ -18,7 +18,7 @@
 #include "prob.h"
 
 #define SETUP_CHECK
-#undef ALGO_CHECK
+#define ALGO_CHECK
 #undef CUT_CHECK
 #undef EVAL_CHECK
 #define SEP_CHECK
@@ -96,9 +96,12 @@ typedef struct {
 
 typedef struct {
 	int		numRV;					/* Number of random variables */
-	int 	cnt;					/* Number of observations */
+	int 	numObs;					/* Total number of observations */
+	int 	cnt;					/* Number of unique observations */
+	iVector weights;				/* Frequency of observations */
 	dVector	probs;					/* Probability of observation */
 	dVector	*vals;					/* Observation values */
+	dVector	sampleMean;				/* Sample mean */
 } omegaType;
 
 typedef struct {
@@ -176,7 +179,6 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 int solveFixedDROCell(probType **prob, cellType *cell);
 int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell);
 
-
 /* optimal.c */
 bool optimal(probType *prob, cellType *cell);
 
@@ -185,6 +187,7 @@ int solveMaster(numType *num, sparseVector *dBar, cellType *cell);
 int checkImprovement(probType *prob, cellType *cell, int candidCut);
 int replaceIncumbent(cellType *cell, double candidEst, int numCols);
 int constructQP(probType *prob, cellType *cell, dVector incumbX, double quadScalar);
+int changeEtaCol(LPptr lp, int numRows, int numCols, int k, cutsType *cuts);
 int changeQPproximal(LPptr lp, int numCols, double sigma, int numEta);
 int changeQPrhs(probType *prob, cellType *cell, dVector xk);
 int changeQPbds(LPptr lp, int numCols, dVector bdl, dVector bdu, dVector xk);
@@ -203,6 +206,7 @@ int chgObjxwObserv(LPptr lp, numType *num, coordType *coord, dVector cost, iVect
 
 /* cuts.c */
 int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect);
+int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar, bool newOmegaFlag);
 oneCut *newCut(int numX, int currentIter, int numObs);
 cutsType *newCuts(int maxCuts);
 double maxCutHeight(cutsType *cuts, int currIter, dVector xk, int betaLen, double lb, bool scale);
@@ -219,7 +223,8 @@ int stochasticUpdates(numType *num, coordType *coord, sparseVector *bBar, sparse
 lambdaType *newLambda(int numLambda);
 sigmaType *newSigma(int numSigma);
 deltaType *newDelta(int numDelta);
-int calcOmega(dVector observ, int begin, int end, omegaType *omega, bool *newOmegaFlag, double TOLERANCE);
+int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmegaFlag, double TOLERANCE);
+void refineOmega(omegaType *omega, dVector stocMean);
 int calcLambda(numType *num, coordType *coord, dVector Pi, lambdaType *lambda, bool *newLambdaFlag);
 int calcSigma(numType *num, coordType *coord, sparseVector *bBar, sparseMatrix *CBar, dVector pi, double mubBar,
 		int idxLambda, bool newLambdaFlag, int currentIter, sigmaType *sigma);
@@ -231,10 +236,10 @@ omegaType *newOmega(stocType *stoc);
 void freeOmegaType(omegaType *omega, bool partial);
 
 /* separation.c */
-int obtainProbDist(oneProblem *sep, dVector probs, dVector spObj, int cnt);
-int updtDistSepProb(oneProblem *sep, dVector spObj, int cnt);
-oneProblem *newDistSepProb(stocType *stoc, omegaType *omega);
-oneProblem *newDistSepProb_MM(omegaType *omega, dVector meanVector, int numMoments);
+int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag);
+int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag, int numMoments);
+oneProblem *newDistSepProb(dVector stocMean, omegaType *omega);
+oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, int numMoments);
 
 /* evalution.c */
 int evaluate(FILE *soln, stocType *stoc, probType **prob, cellType *cell, dVector Xvect);
