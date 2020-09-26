@@ -99,8 +99,10 @@ int readConfig() {
 			default: errMsg("read", "readConfig", "unrecognized parameter in configuration file", 1); break;
 			}
 		}
-		else if (!(strcmp(line, "DRO_PARAM")))
-			fscanf(fptr, "%lf", &config.DRO_PARAM);
+		else if (!(strcmp(line, "DRO_PARAM_1")))
+			fscanf(fptr, "%d", &config.DRO_PARAM_1);
+		else if (!(strcmp(line, "DRO_PARAM_2")))
+			fscanf(fptr, "%lf", &config.DRO_PARAM_2);
 
 		else if (!strcmp(line, "//"))
 			fgets(comment, 2*BLOCKSIZE, fptr);
@@ -253,7 +255,7 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	else
 		len = config.MAX_ITER + config.MAX_ITER / config.TAU + 1;
 
-	cell->omega  = newOmega(stoc, len);
+	cell->omega  = newOmega(stoc, len, config.DRO_PARAM_1);
 	if ( config.SAMPLING_TYPE == 2 ) {
 		/* Initialize all the elements which will be used to store dual information */
 		cell->lambda = newLambda(len);

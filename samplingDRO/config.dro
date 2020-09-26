@@ -28,7 +28,7 @@ CUT_MULT  3
 
 // ******************** Replicated experiments ********************
 // Number of replications.
-MULTIPLE_REP 5
+MULTIPLE_REP 2
 
 // Run seeds
 RUN_SEED    8879657642464524
@@ -116,5 +116,7 @@ MAX_OBS 50
 DRO_TYPE 1
 
 // Parameters associated with the ambiguity set
-DRO_PARAM 0.05
+// Moment-based ambiguity set: Parameter 1 = number of moments and Parameter 2 = bounding error
+DRO_PARAM_1 2
+DRO_PARAM_2 0.05
 

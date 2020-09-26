@@ -95,7 +95,6 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 		goto TERMINATE;
 	}
 
-	TERMINATE:
 	if ( piS ) mem_free(piS);
 	if ( spObj ) mem_free(spObj);
 	if ( alpha) mem_free(alpha);
@@ -106,6 +105,17 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 		mem_free(beta);
 	}
 	return 0;
+	TERMINATE:
+	if ( piS ) mem_free(piS);
+	if ( spObj ) mem_free(spObj);
+	if ( alpha) mem_free(alpha);
+	if ( beta ) {
+		for ( obs = 0; obs < cell->omega->cnt; obs++ ) {
+			if (beta[obs]) mem_free(beta[obs]);
+		}
+		mem_free(beta);
+	}
+	return 1;
 }//END formOptCut()
 
 int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar, bool newOmegaFlag) {

@@ -37,7 +37,7 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 
 	for ( rep = 0; rep < config.MULTIPLE_REP; rep++ ) {
 		fprintf(stdout, "\n====================================================================================================================================\n");
-		fprintf(stdout, "\nReplication-%d", rep+1);
+		fprintf(stdout, "Replication-%d\n", rep+1);
 
 		/* setup the seed to be used in the current iteration */
 		config.RUN_SEED[0]  = config.RUN_SEED[rep+1];
@@ -68,7 +68,7 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 			}
 		}
 		else {
-			if ( cleanDistSepProb(cell->sep, cell->omega, 1) ) {
+			if ( cleanDistSepProb(cell->sep, prob[1]->mean, cell->omega, config.DRO_PARAM_1) ) {
 				errMsg("algorithm", "algo", "failed to clean the distribution separation problem", 0);
 				goto TERMINATE;
 			}

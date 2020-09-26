@@ -51,21 +51,21 @@ int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmega
 
 	/* Since the problem already has the mean values on the right-hand side, remove it from the original observation */
 	observ[0] = 0.0;
-	for ( int m = 1; m <= omega->numRV; m++ ) {
+	for ( int m = 1; m <= omega->numOmega; m++ ) {
 		observ[m] -= stocMean[m];
 		observ[0] += observ[m];
 	}
 
 	/* Compare vector with all the previous observations */
 	for (cnt = 0; cnt < omega->cnt; cnt++) {
-		if (equalVector(observ, omega->vals[cnt], omega->numRV, TOLERANCE)) {
+		if (equalVector(observ, omega->vals[cnt], omega->numOmega, TOLERANCE)) {
 			break;
 		}
 	}
 
 	if ( cnt == omega->cnt ) {
 		/* New observation encountered, then add the realization vector to the list. */
-		omega->vals[omega->cnt] = duplicVector(observ, omega->numRV);
+		omega->vals[omega->cnt] = duplicVector(observ, omega->numOmega);
 		omega->weights[omega->cnt] = 1;
 		(*newOmegaFlag) = true;
 		omega->cnt++;
@@ -77,8 +77,11 @@ int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmega
 	omega->numObs++;
 
 	/* Update omega statistics: sample mean */
-	for ( int rv = 1; rv <= omega->numRV; rv++ ) {
-		omega->sampleMean[rv] = ( (omega->numObs-1)*omega->sampleMean[rv] + (stocMean[rv] + omega->vals[cnt][rv]))/(double) omega->numObs;
+	for ( int rv = 1; rv <= omega->numOmega; rv++ ) {
+		for ( int m = 0; m < omega->numStats; m++ ) {
+			omega->sampleStats[m][rv] = ( (omega->numObs-1)*omega->sampleStats[m][rv] +
+					pow(stocMean[rv] + omega->vals[cnt][rv], m+1))/(double) omega->numObs;
+		}
 	}
 
 #ifdef STOCH_CHECK
@@ -95,11 +98,11 @@ int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmega
 void refineOmega(omegaType *omega, dVector stocMean) {
 
 	/* Compute sample mean */
-	computeSampleMean(omega->vals, omega->weights, omega->numRV, omega->cnt, omega->numObs, omega->sampleMean);
+	computeSampleStats(omega->vals, omega->weights, omega->numOmega, omega->cnt, omega->numObs, omega->sampleStats, omega->numStats);
 
 	/* Adjust observations to be centered around mean */
 	for ( int m = 0; m < omega->cnt; m++ ) {
-		for ( int n = 1; n <= omega->numRV; n++ )
+		for ( int n = 1; n <= omega->numOmega; n++ )
 			omega->vals[m][n] -= stocMean[n-1];
 	}
 
@@ -235,7 +238,7 @@ int calcDelta(numType *num, coordType *coord, lambdaType *lambda, deltaType *del
 
 /* This function allocates memory for an omega structure.  It allocates the memory to structure elements: a dVector to hold an array of
  * observation and the probability associated with it. */
-omegaType *newOmega(stocType *stoc, int maxObs) {
+omegaType *newOmega(stocType *stoc, int maxObs, int numStats) {
 	omegaType *omega;
 	int cnt, i, base, idx;
 
@@ -243,10 +246,14 @@ omegaType *newOmega(stocType *stoc, int maxObs) {
 	omega->probs = (dVector) arr_alloc(maxObs, double);
 	omega->weights = (iVector) arr_alloc(maxObs, int);
 	omega->vals = (dVector *) arr_alloc(maxObs, dVector);
-	omega->sampleMean = (dVector) arr_alloc(stoc->numOmega+1, double);
+	omega->sampleStats = (dVector *) arr_alloc(numStats, double);
+	for ( int n = 0; n < numStats; n++ ) {
+		omega->sampleStats[n] = (dVector) arr_alloc(stoc->numOmega+1, double);
+	}
 	omega->cnt = 0;
-	omega->numRV = stoc->numOmega;
+	omega->numOmega = stoc->numOmega;
 	omega->numObs = 0;
+	omega->numStats = numStats;
 
 	if ( config.SAMPLING_TYPE != 0 ) {
 		return omega;
@@ -259,11 +266,11 @@ omegaType *newOmega(stocType *stoc, int maxObs) {
 			omega->probs = (dVector) mem_realloc(omega->probs, omega->cnt*sizeof(double));
 			for ( cnt = 0; cnt < omega->cnt; cnt++) {
 				omega->probs[cnt]= stoc->probs[0][cnt];
-				if ( !(omega->vals[cnt] = (dVector) arr_alloc(omega->numRV+1, double)) )
+				if ( !(omega->vals[cnt] = (dVector) arr_alloc(omega->numOmega+1, double)) )
 					errMsg("allocation", "updateOmega", "omega->vals[cnt]", 0);
-				for (i = 0; i < omega->numRV; i++)
+				for (i = 0; i < omega->numOmega; i++)
 					omega->vals[cnt][i+1]=stoc->vals[i][cnt]-stoc->mean[i];
-				omega->vals[cnt][0] = oneNorm(omega->vals[cnt]+1, omega->numRV);
+				omega->vals[cnt][0] = oneNorm(omega->vals[cnt]+1, omega->numOmega);
 			}
 		}
 		else {
@@ -287,10 +294,10 @@ omegaType *newOmega(stocType *stoc, int maxObs) {
 			omega->vals = (dVector *) mem_realloc(omega->vals, omega->cnt*sizeof(dVector));
 			omega->probs = (dVector) mem_realloc(omega->probs, omega->cnt*sizeof(double));
 			for ( cnt = 0; cnt < omega->cnt; cnt++) {
-				if ( !(omega->vals[cnt] = (dVector) arr_alloc(omega->numRV+1, double)) )
+				if ( !(omega->vals[cnt] = (dVector) arr_alloc(omega->numOmega+1, double)) )
 					errMsg("allocation", "updateOmega", "omega->vals[cnt]", 0);
 				omega->probs[cnt] = 1; base = omega->cnt;
-				for ( i = 0; i < omega->numRV; i++ ) {
+				for ( i = 0; i < omega->numOmega; i++ ) {
 					base /= stoc->numVals[i];
 					idx = (int)((double) cnt / (double) base) % stoc->numVals[i];
 					omega->vals[cnt][i+1] = stoc->vals[i][idx]-stoc->mean[i];
@@ -396,12 +403,10 @@ void freeDeltaType (deltaType *delta, int numDeltaRows, int omegaCnt, bool parti
 
 }//END freeDeltaType()
 
-
 void freeOmegaType(omegaType *omega, bool partial) {
-	int n;
 
 	if ( omega->vals ) {
-		for ( n = 0; n < omega->cnt; n++ )
+		for ( int n = 0; n < omega->cnt; n++ )
 			if ( omega->vals[n] )
 				mem_free(omega->vals[n]);
 		if ( partial ) {
@@ -413,7 +418,13 @@ void freeOmegaType(omegaType *omega, bool partial) {
 	}
 	if ( omega->probs ) mem_free(omega->probs);
 	if ( omega->weights ) mem_free(omega->weights);
-	if ( omega->sampleMean) mem_free(omega->sampleMean);
+	if ( omega->sampleStats) {
+		for ( int n = 0; n < omega->numStats; n++ ) {
+			if ( omega->sampleStats[n]) mem_free(omega->sampleStats[n]);
+		}
+		mem_free(omega->sampleStats);
+	}
+
 	mem_free(omega);
 
 }//END freeOmegaType()
