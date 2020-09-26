@@ -37,7 +37,7 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 
 	for ( rep = 0; rep < config.MULTIPLE_REP; rep++ ) {
 		fprintf(stdout, "\n====================================================================================================================================\n");
-		fprintf(stdout, "Replication-%d\n", rep+1);
+		fprintf(stdout, "\nReplication-%d", rep+1);
 
 		/* setup the seed to be used in the current iteration */
 		config.RUN_SEED[0]  = config.RUN_SEED[rep+1];
@@ -52,7 +52,7 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 		}
 
 		/* Setup the initial sample for omega structure */
-		if ( config.SAMPLING_TYPE != 0 ) {
+		if ( config.SAMPLING_TYPE == 1 ) {
 			cell->omega->numObs = config.MAX_OBS;
 			setupSAA(stoc, NULL, &config.RUN_SEED[0], cell->omega->vals, cell->omega->probs, cell->omega->weights,
 					&cell->omega->cnt, cell->omega->numObs, config.TOLERANCE);
@@ -60,8 +60,19 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 			refineOmega(cell->omega, stoc->mean);
 		}
 
-		/* Setup the distribution separation problem */
-		cell->sep = newDistSepProb(prob[1]->mean, cell->omega);
+		/* Setup or clean the distribution separation problem */
+		if ( rep == 0 ) {
+			if ( (cell->sep = newDistSepProb(prob[1]->mean, cell->omega)) == NULL) {
+				errMsg("algorithm", "algo", "failed to setup a new distribution separation problem", 0);
+				goto TERMINATE;
+			}
+		}
+		else {
+			if ( cleanDistSepProb(cell->sep, cell->omega, 1) ) {
+				errMsg("algorithm", "algo", "failed to clean the distribution separation problem", 0);
+				goto TERMINATE;
+			}
+		}
 
 		tic = clock();
 		/* Use two-stage algorithm to solve the problem */
@@ -166,6 +177,14 @@ int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell) {
 		cell->k++;
 		bool newOmegaFlag = false;
 
+#if defined(ALGO_CHECK) || defined(CUT_CHECK) || defined(SEP_CHECK)
+		printf("\nIteration-%03d :: \n", cell->k); fflush(stdout);
+#else
+		if ( ((cell->k-1) % 100) == 0 ) {
+			printf("\nIteration-%03d :: ", cell->k);
+		}
+#endif
+
 		/******* 1. Check for optimality of the current solution *******/
 		if ( optimal(prob[0], cell) ) {
 			break;
@@ -194,7 +213,7 @@ int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell) {
 		}
 
 		/******* 5. Check improvement in predicted values at candidate solution *******/
-		if ( !(cell->incumbChg) && cell->k > 1)
+		if ( !(cell->incumbChg) )
 			checkImprovement(prob[0], cell, candidCut);
 
 		/******* 6. Solve the master problem to obtain the new candidate solution */
@@ -211,6 +230,7 @@ int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell) {
 		cell->time->iterTime = ((double) clock() - tic)/CLOCKS_PER_SEC; cell->time->iterAccumTime += cell->time->iterTime;
 	}//END main loop
 
+	mem_free(observ);
 	return 0;
 }//END solveDRSDCell()
 
@@ -218,11 +238,11 @@ void writeOptimizationStatistics(FILE *soln, FILE *incumb, probType **prob, cell
 
 	/* Print header for the first replication*/
 	if ( rep == 0)
-		fprintf(soln, "Replication\tIterations\tOpt estimate\tTotal time\tMaster time\t Subproblem time\t Optimality time\tArgmax time\t Reduce time\t"
+		fprintf(soln, "Replication\tIterations\tOpt estimate\tTotal time\tMaster time\t Subproblem time\t Optimality time\tArgmax time\t Separation time\t"
 				"Eval Estimate\tError\tCI-L\tCI-U\tOutcomes\n");
 
 	fprintf(soln, "%d\t%d\t%.4lf\t%.4lf\t%.4lf\t%.4lf\t%.4lf\t%.4lf\t%.4lf", rep+1, cell->k, cell->incumbEst,cell->time->repTime, cell->time->masterAccumTime,
-			cell->time->subprobAccumTime, cell->time->optTestAccumTime, cell->time->argmaxAccumTime, cell->time->reduceTime);
+			cell->time->subprobAccumTime, cell->time->optTestAccumTime, cell->time->argmaxAccumTime, cell->time->distSepTime);
 
 	if ( incumb != NULL ) {
 		if ( config.MASTER_TYPE == PROB_QP )
@@ -250,6 +270,7 @@ void printOptimizationSummary(cellType *cell) {
 	fprintf(stdout, "Total time                         : %f\n", cell->time->repTime);
 	fprintf(stdout, "Total time to solve master         : %f\n", cell->time->masterAccumTime);
 	fprintf(stdout, "Total time to solve subproblems    : %f\n", cell->time->subprobAccumTime);
+	fprintf(stdout, "Total time on distr separation     : %f\n", cell->time->distSepTime);
 	fprintf(stdout, "Total time to verify optimality    : %f\n", cell->time->optTestAccumTime);
 
 }//END writeOptimizationSummary()

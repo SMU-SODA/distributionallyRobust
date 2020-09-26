@@ -2,10 +2,10 @@
 TOLERANCE    0.001
 
 // Minimum iterations
-MIN_ITER   100
+MIN_ITER   1
 
 // Maximum number of iterations
-MAX_ITER   100
+MAX_ITER   1000
 
 // Master type: 0 for LP, 1 for MILP, 5 for QP and 7 for MIQP
 MASTER_TYPE 0
@@ -28,7 +28,7 @@ CUT_MULT  3
 
 // ******************** Replicated experiments ********************
 // Number of replications.
-MULTIPLE_REP 1
+MULTIPLE_REP 5
 
 // Run seeds
 RUN_SEED    8879657642464524
@@ -63,7 +63,7 @@ RUN_SEED    1395182510837913
 RUN_SEED    3735836402047426
 
 // Indicate whether to employ (by setting equal to 1) evaluation of the eventual solution
-EVAL_FLAG 1
+EVAL_FLAG 0
 
 // Solution tolerance for deciding the usage of mean solution.
 EVAL_MIN_ITER 250
@@ -109,7 +109,7 @@ EVAL_SEED	4742397086462006
 SAMPLING_TYPE 2
 
 // Number of observations to be used to set the sample average approximation
-MAX_OBS 10
+MAX_OBS 50
 
 // ******************** Distribution robust parameters ********************
 // Type of ambiguity set: Risk-neutral (0), Moment-matching (1)

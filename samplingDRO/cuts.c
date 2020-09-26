@@ -20,6 +20,7 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 	sparseVector bOmega;
 	double mubBar;
 	int obs, cutID = -1;
+	clock_t tic;
 
 	/* Allocate memory and initializations */
 	piS = (dVector) arr_alloc(prob->num->rows+1, double);
@@ -65,11 +66,13 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 #endif
 	}
 
+	tic = clock();
 	/* 2. Solve the distribution separation problem if we are not solving the risk-neutral version. */
 	if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, false, 0) ) {
 		errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
 		return 1;
 	}
+	cell->time->distSepTime += ((double) (clock() - tic))/CLOCKS_PER_SEC;
 
 	/* 3. Compute the aggregated cut coefficients */
 	for ( obs = 0; obs < cell->omega->cnt; obs++ ) {
@@ -77,6 +80,7 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 		for (int c = 1; c <= prob->num->prevCols; c++)
 			cut->beta[c] += cell->omega->probs[obs]*beta[obs][c];
 	}
+	cut->numObs = cell->omega->numObs;
 
 	/* 4. Add cut to master. */
 	cut->beta[0] = 1.0;
@@ -106,16 +110,14 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 
 int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar, bool newOmegaFlag) {
 	oneCut 	*cut;
-	dVector piS, spObj, piCbarX, beta;
-	double	mubBar, alpha;
+	dVector piS, spObj, piCbarX;
+	double	mubBar;
 	int    	cutIdx;
 	clock_t tic;
 
 	/* allocate memory to hold a subproblem duals, estimated objective function and the new cut */
 	piS = (dVector) arr_alloc(prob->num->rows+1, double);
 	spObj = (dVector) arr_alloc(cell->omega->cnt, double);
-	piCbarX = (dVector) arr_alloc(cell->sigma->cnt, double);
-	beta = (dVector) arr_alloc(prob->num->prevCols+1, double);
 	cut = newCut(prob->num->prevCols, cell->omega->cnt, cell->k);
 
 	/*********************************** 1. Subproblem solve and update resource function approximation **************************************/
@@ -136,8 +138,8 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 
 	/* (b) Update the stochastic elements in the problem */
 	tic = clock();
-	cut->iStar[obsStar] = stochasticUpdates(prob->num, prob->coord, prob->bBar, prob->Cbar, cell->lambda, cell->sigma, cell->delta,
-			cell->omega, cell->k, piS, mubBar);
+	cut->iStar[obsStar] = stochasticUpdates(prob->num, prob->coord, prob->bBar, prob->Cbar, cell->lambda, cell->sigma, cell->delta, config.MAX_ITER,
+			cell->omega, newOmegaFlag, obsStar, cell->k, piS, mubBar);
 	cell->time->argmaxIter += ((double) (clock() - tic))/CLOCKS_PER_SEC;
 
 #ifdef STOCH_CHECK
@@ -148,6 +150,7 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 #endif
 
 	/* (c) Obtain the best dual vertex using the argmax procedure and the corresponding objective function estimate. */
+	piCbarX = (dVector) arr_alloc(cell->sigma->cnt, double);
 	double argmax;
 	int istar;
 	/* Pre-compute pi x Cbar x x as it is independent of observations */
@@ -175,36 +178,46 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 		}
 	}
 	else  {
+		clock_t tic = clock();
 		if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, obsStar, newOmegaFlag) ) {
 			errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
 			return 1;
 		}
+		cell->time->distSepTime += ((double) (clock() - tic))/CLOCKS_PER_SEC;
 	}
+
+#if defined(SEP_CHECK)
+	double objEst = 0.0, objEst_dro = 0.0;
+	for (int obs = 0; obs < cell->omega->cnt; obs++) {
+		objEst += cell->omega->weights[obs]*spObj[obs];
+		objEst_dro += cell->omega->probs[obs]*spObj[obs];
+	}
+	objEst /= (double) cell->omega->numObs;
+	printf("\tRisk neutral estimate = %lf, DRO estimate = %lf\n", objEst, objEst_dro);
+#endif
 
 	/*********************************** 3. Create the affine function using the stochastic elements **************************************/
 	/* (a) Create an affine lower bound */
+	cut->alpha = 0.0;
+	cut->beta[0] = 1.0;
 	for ( int obs = 0; obs < cell->omega->cnt; obs++ ) {
-	alpha += cell->sigma->vals[cut->iStar[obs]].pib * cell->omega->probs[obs];
-	alpha += cell->delta->vals[cell->sigma->lambdaIdx[cut->iStar[obs]]][obs].pib * cell->omega->probs[obs];
+		cut->alpha += cell->sigma->vals[cut->iStar[obs]].pib * cell->omega->probs[obs];
+		cut->alpha += cell->delta->vals[cell->sigma->lambdaIdx[cut->iStar[obs]]][obs].pib * cell->omega->probs[obs];
 
-	for (int c = 1; c <= prob->num->cntCcols; c++)
-		beta[prob->coord->CCols[c]] += cell->sigma->vals[cut->iStar[obs]].piC[c] * cell->omega->probs[obs];
-	for (int c = 1; c <= prob->num->rvCOmCnt; c++)
-		beta[prob->coord->rvCols[c]] += cell->delta->vals[cell->sigma->lambdaIdx[cut->iStar[obs]]][obs].piC[c] * cell->omega->probs[obs];
+		for (int c = 1; c <= prob->num->cntCcols; c++)
+			cut->beta[prob->coord->CCols[c]] += cell->sigma->vals[cut->iStar[obs]].piC[c] * cell->omega->probs[obs];
+		for (int c = 1; c <= prob->num->rvCOmCnt; c++)
+			cut->beta[prob->coord->rvCols[c]] += cell->delta->vals[cell->sigma->lambdaIdx[cut->iStar[obs]]][obs].piC[c] * cell->omega->probs[obs];
 	}
+	cut->numObs = cell->omega->numObs;
 
-#if defined(STOCH_CHECK)
-	/* Solve the subproblem to verify if the argmax operation yields a lower bound */
-	for ( int cnt = 0; cnt < cell->omega->cnt; cnt++ ) {
-		/* (a) Construct the subproblem with input observation and master solution, solve the subproblem, and complete stochastic updates */
-		if ( solveSubprob(prob[1], cell->subprob, Xvect, cell->basis, cell->lambda, cell->sigma, cell->delta, config.MAX_ITER,
-				cell->omega, cnt, newOmegaFlag, cell->k, config.TOLERANCE, &cell->spFeasFlag, NULL,
-				&cell->time.subprobIter, &cell->time.argmaxIter) < 0 ) {
-			errMsg("algorithm", "formSDCut", "failed to solve the subproblem", 0);
-			return -1;
-		}
-		printf("Subproblem solve for omega-%d = %lf\n", cnt, getObjective(cell->subprob->lp, PROB_LP));
+#if defined(CUT_CHECK)
+	double est1 = 0.0;
+	for (int obs = 0; obs < cell->omega->cnt; obs++) {
+		est1 += cell->omega->probs[obs]*spObj[obs];
 	}
+	double est2 = cutHeight(cut, cell->k, Xvect, prob->num->prevCols, 0, false);
+	printf("\tMaximal expectation = %lf, estimated cut height = %lf\n", est1, est2);
 #endif
 
 	/* (b) Add cut to the structure and master problem  */
@@ -212,6 +225,10 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 		errMsg("algorithm", "formSDCut", "failed to add the new cut to master problem", 0);
 		goto TERMINATE;
 	}
+
+	mem_free(piS);
+	mem_free(spObj);
+	mem_free(piCbarX);
 
 	return cutIdx;
 	TERMINATE:
@@ -233,20 +250,21 @@ cutsType *newCuts(int maxCuts) {
 	return cuts;
 }//END newCuts
 
-oneCut *newCut(int numX, int currentIter, int numObs) {
+oneCut *newCut(int numX, int currentIter, int numSamples) {
 	oneCut *cut;
 
 	cut = (oneCut *) mem_malloc (sizeof(oneCut));
-	cut->isIncumb = false; 								/* new cut is by default not an incumbent */
-	cut->alphaIncumb = 0.0;
-	cut->rowNum = -1;
 	cut->ck = currentIter;
+	cut->alpha = 0.0;
+	cut->alphaIncumb = 0.0;
 	if (!(cut->beta = arr_alloc(numX + 1, double)))
 		errMsg("allocation", "new_cut", "beta", 0);
-	cut->alpha = 0.0;
 	cut->name = (cString) arr_alloc(NAMESIZE, char);
-	cut->omegaID = 0;
-	cut->iStar = (iVector) arr_alloc(numObs, int);
+
+	cut->iStar = (iVector) arr_alloc(numSamples, int);
+
+	cut->rowNum = -1;
+	cut->isIncumb = false; /* new cut is by default not an incumbent */
 
 	return cut;
 }//END newCut
@@ -268,9 +286,9 @@ double maxCutHeight(cutsType *cuts, int currIter, dVector xk, int betaLen, doubl
 
 /* This function calculates and returns the height of a given cut at a given X.  It includes the k/(k-1) update, but does not include
  * the coefficients due to the cell. */
-double cutHeight(oneCut *cut, int currIter, dVector xk, int betaLen, double lb, bool scale) {
+double cutHeight(oneCut *cut, int currObs, dVector xk, int betaLen, double lb, bool scale) {
 	double height;
-	double t_over_k = ((double) cut->numSamples / (double) currIter);
+	double t_over_k = ((double) cut->numObs / (double) currObs);
 
 	/* A cut is calculated as alpha - beta x X */
 	height = cut->alpha - vXv(cut->beta, xk, NULL, betaLen);

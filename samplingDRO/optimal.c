@@ -25,6 +25,9 @@ bool optimal(probType *prob, cellType *cell) {
 			}
 			else
 				cell->optFlag = (est > (1 + config.EPSILON) * cell->candidEst);
+#if defined(ALGO_CHECK)
+	printf("\tOptimality: Current estimate = %lf; Previous estimate = %lf\n", est, cell->candidEst);
+#endif
 		}
 		else if ( config.SAMPLING_TYPE == 2 ) {
 			est = cell->candidEst;
@@ -33,16 +36,15 @@ bool optimal(probType *prob, cellType *cell) {
 			}
 			else
 				cell->optFlag = (est > (1 + config.EPSILON) * cell->incumbEst);
+#if defined(ALGO_CHECK)
+	printf("\tOptimality: Candidate estimate = %lf; Incumbent estimate = %lf\n", cell->candidEst, cell->incumbEst);
+#endif
 		}
 		else {
 			fprintf(stderr, "Optimality rules not set.\n");
 		}
 	}
 	cell->time->optTestIter += ((double) (clock() - tic))/CLOCKS_PER_SEC;
-
-#if defined(ALGO_CHECK)
-	printf("Current estimate = %lf; Previous estimate = %lf\n", est, cell->candidEst);
-#endif
 
 	return cell->optFlag;
 }//END optimal()
@@ -56,12 +58,17 @@ bool optimal(probType *prob, cellType *cell) {
 int checkImprovement(probType *prob, cellType *cell, int candidCut) {
 	double  candidEst;
 
+	/* Compute the incumbent estimate*/
+	cell->incumbEst = vXvSparse(cell->incumbX, prob->dBar) + maxCutHeight(cell->cuts, cell->k, cell->incumbX, prob->num->cols, prob->lb, true);
+	if ( cell->k == 1 ) {
+		return 0;
+	}
+
 	/* Calculate height at new candidate x with newest cut included */
 	candidEst = vXvSparse(cell->candidX, prob->dBar) + maxCutHeight(cell->cuts, cell->k, cell->candidX, prob->num->cols, prob->lb, true);
-	cell->incumbEst = vXvSparse(cell->incumbX, prob->dBar) + maxCutHeight(cell->cuts, cell->k, cell->incumbX, prob->num->cols, prob->lb, true);
 
 #ifdef ALGO_CHECK
-	printf("\nCandidate estimate = %lf, Incumbent estimate = %lf",candidEst, cell->incumbEst);
+	printf("\tImprovement: Candidate estimate = %lf, Incumbent estimate = %lf\n",candidEst, cell->incumbEst);
 #endif
 
 	/* If we see considerable improvement, then change the incumbent */

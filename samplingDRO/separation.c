@@ -12,7 +12,10 @@
 #include "samplingDRO.h"
 
 extern configType config;
+
+#if defined(SEP_CHECK)
 extern cString outputDir;
+#endif
 
 int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag) {
 	int status;
@@ -48,9 +51,10 @@ int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector 
 	mem_free(tempProbs);
 
 #if defined(SEP_CHECK)
-	/* print the extremal probability distribution to the problem .*/
+	/* print the extremal probability distribution to the problem.*/
 	FILE *sFile = openFile(outputDir, "extremeProb.csv", "a");
 	printVector(omega->probs-1, omega->cnt, sFile);
+	fclose(sFile);
 #endif
 
 	return 0;
@@ -255,14 +259,14 @@ oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, int numMoments
 			sprintf(tempName,"mm_up[%d,%d]", m, rv-1);
 			strcpy(dist->rstore + offset, tempName);
 			dist->rname[j] = dist->rstore + offset;
-			dist->rhsx[j]  = (stocMean[rv] + omega->sampleMean[rv])*(1 + config.DRO_PARAM);
+			dist->rhsx[j]  = omega->sampleMean[rv]*(1 + config.DRO_PARAM);
 			dist->senx[j++] = 'L';
 			offset += strlen(tempName) + 1;
 
 			sprintf(tempName,"mm_dw[%d,%d]", m, rv-1);
 			strcpy(dist->rstore + offset, tempName);
 			dist->rname[j]  = dist->rstore + offset;
-			dist->rhsx[j]  = -(stocMean[rv] + omega->sampleMean[rv])*(1 - config.DRO_PARAM);
+			dist->rhsx[j]  = -omega->sampleMean[rv]*(1 - config.DRO_PARAM);
 			dist->senx[j++] = 'L';
 			offset += strlen(tempName) + 1;
 		}
@@ -282,7 +286,7 @@ oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, int numMoments
 		return NULL;
 	}
 
-#if defined(SETUP_CHECK)
+#if defined(SEP_CHECK)
 	if ( writeProblem(dist->lp, "newDistSep.lp") ) {
 		errMsg("solver", "newDistSepProb_MM", "failed to write distribution separation problem to file", 0);
 		return NULL;
@@ -291,3 +295,50 @@ oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, int numMoments
 
 	return dist;
 }//END newDistProb()
+
+int cleanDistSepProb(oneProblem *sep, omegaType *omega, int numMoments) {
+	dVector rhsx;
+	iVector indices;
+	int idx;
+
+	if ( config.SAMPLING_TYPE == 1 ) {
+		/* The only update necessary is in the right hand side of the constraints */
+		indices = (iVector) arr_alloc(2*numMoments*omega->numRV, int);
+		rhsx    = (dVector) arr_alloc(2*numMoments*omega->numRV+1, double);
+		idx = 0;
+		for ( int rv = 1; rv <= omega->numRV; rv++ ) {
+			for  ( int m = 0; m < numMoments; m++ ) {
+				indices[idx] = idx;
+				rhsx[idx++] = omega->sampleMean[rv]*(1 + config.DRO_PARAM);
+				indices[idx] = idx;
+				rhsx[idx++] = -omega->sampleMean[rv]*(1 - config.DRO_PARAM);
+			}
+		}
+
+		if ( changeRHS(sep->lp, idx, indices, rhsx) ) {
+			errMsg("solver", "cleanDistSepProb", "failed to change the cost coefficients in the solver", 0);
+			return 1;
+		}
+
+		mem_free(indices);
+		mem_free(rhsx);
+
+	}
+	else if ( config.SAMPLING_TYPE == 2 ) {
+		/* Remove all the columns in the problem */
+		int mac = getNumCols(sep->lp);
+		if (  removeColumn(sep->lp, 0, mac-1) ) {
+			errMsg("solver", "cleanDistSepProb", "failed to remove a column from the distribution separation problem problem", 0);
+			return 1;
+		}
+	}
+
+#if defined(SEP_CHECK)
+	if ( writeProblem(sep->lp, "cleanDistSep.lp") ) {
+		errMsg("solver", "cleanDistSepProb", "failed to write distribution separation problem to file", 0);
+		return 1;
+	}
+#endif
+
+	return 0;
+}//END cleanDistSepProb()

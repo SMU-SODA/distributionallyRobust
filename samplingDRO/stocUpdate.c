@@ -19,9 +19,13 @@ extern configType config;
  * Note that the new column of delta is computed before a new row in lambda is calculated and before the new row in delta is completed,
  * so that the intersection of the new row and new column in delta is only computed once (they overlap at the bottom, right-hand corner). */
 int stochasticUpdates(numType *num, coordType *coord, sparseVector *bBar, sparseMatrix *Cbar, lambdaType *lambda, sigmaType *sigma,
-		deltaType *delta, omegaType *omega, int iter, dVector pi, double mubBar) {
+		deltaType *delta, int deltaRowLength, omegaType *omega, bool newOmegaFlag, int omegaIdx, int iter, dVector pi, double mubBar) {
 	int 	sigmaIdx, lambdaIdx;
 	bool 	newLambdaFlag= false;
+
+	if ( newOmegaFlag ) {
+		calcDelta(num, coord, lambda, delta, deltaRowLength, omega, newOmegaFlag, omegaIdx);
+	}
 
 	/* extract the dual solutions corresponding to rows with random elements in them */
 	lambdaIdx = calcLambda(num, coord, pi, lambda, &newLambdaFlag);
@@ -33,7 +37,7 @@ int stochasticUpdates(numType *num, coordType *coord, sparseVector *bBar, sparse
 	/* and save the time for expanding/reducing dVector even though the lambda is the same, the current Pi might be a
      distinct one due to the variations in sigma*/
 	if (newLambdaFlag)
-		calcDeltaRow(num, coord, omega, lambda, lambdaIdx, delta);
+		calcDelta(num, coord, lambda, delta, deltaRowLength, omega, false, lambdaIdx);
 
 	return sigmaIdx;
 }//END stochasticUpdates()
@@ -162,63 +166,89 @@ int calcSigma(numType *num, coordType *coord, sparseVector *bBar, sparseMatrix *
 	return sigma->cnt++;
 }//END calcSigma()
 
-/* This function calculates a new row in the delta structure, based on a new dual dVector, lambda_pi, by calculating lambda_pi X b and
- * lambda_pi X C for all previous realizations of b(omega) and C(omega).  It is assumed that the lambda dVector is distinct from all previous ones
- * and thus a new row is warranted. */
-int calcDeltaRow(numType *num, coordType *coord, omegaType *omega, lambdaType *lambda, int lambdaIdx, deltaType *delta) {
-	sparseVector bomega;
-	sparseMatrix Comega;
-	dVector 	lamb_pi, pixC;
-	int		obs;
+/* This function calculates a new column in the delta structure, based on a new observation of omega. Thus, lambda_pi X C and lambda_pi X b
+ * are calculated for all values of lambda_pi, for the new C(omega) and b(omega).  Room in the array has already been allocated, so the function
+ * only fills it, in the column specified by _obs_. It is assumed that this observation is distinct from all previous ones, and thus a new column
+ * must be calculated. */
+int calcDelta(numType *num, coordType *coord, lambdaType *lambda, deltaType *delta, int deltaRowLength, omegaType *omega, bool newOmegaFlag, int elemIdx) {
+	sparseMatrix COmega;
+	sparseVector bOmega;
+	dVector		 lambdaPi, piCrossC;
+	int 		 idx;
 
-	bomega.cnt = num->rvbOmCnt;	bomega.col = coord->rvbOmRows;
-	Comega.cnt = num->rvCOmCnt; Comega.col = coord->rvCOmCols; Comega.row = coord->rvCOmRows;
+	/* extract the coordinates and number of random elements */
+	bOmega.cnt = num->rvbOmCnt;	bOmega.col = coord->rvbOmRows;
+	COmega.cnt = num->rvCOmCnt; COmega.col = coord->rvCOmCols; COmega.row = coord->rvCOmRows;
 
-	if ( !(delta->vals[lambdaIdx] = (pixbCType *) arr_alloc(omega->cnt, pixbCType)))
-		errMsg("allocation", "calcDeltaRow", "delta->val[cnt]", 0);
+	if ( newOmegaFlag ) {
+		/* Case I: New observation encountered. */
+		bOmega.val= omega->vals[elemIdx];
+		COmega.val = omega->vals[elemIdx] + num->rvbOmCnt;
 
-	/* expand the compressed lambda dVector */
-	lamb_pi = expandVector(lambda->vals[lambdaIdx], coord->rvRows, num->rvRowCnt, num->rows);
+		/* For all dual vectors, lambda(pi), calculate pi X bomega and pi X Comega */
+		for (idx = 0; idx < lambda->cnt; idx++) {
+			/* Retrieve a new (sparse) dual vector, and expand it into a full vector */
+			lambdaPi = expandVector(lambda->vals[idx], coord->rvRows, num->rvRowCnt, num->rows);
 
-	/* go through all the observations and compute pi x b and pi x C */
-	for (obs = 0; obs < omega->cnt; obs++) {
-		bomega.val= omega->vals[obs];
-		Comega.val = omega->vals[obs] + num->rvbOmCnt;
+			/* Multiply the dual vector by the observation of bomega and Comega */
+			/* Reduce PIxb from its full vector form into a sparse vector */
+			delta->vals[idx][elemIdx].pib = vXvSparse(lambdaPi, &bOmega);
+			if ( num->rvCOmCnt != 0 ) {
+				piCrossC = vxMSparse(lambdaPi, &COmega, num->prevCols);
+				delta->vals[idx][elemIdx].piC = reduceVector(piCrossC, coord->rvCOmCols, num->rvCOmCnt);
+				mem_free(piCrossC);
+			}
+			else
+				delta->vals[idx][elemIdx].piC = NULL;
 
-		delta->vals[lambdaIdx][obs].pib = vXvSparse(lamb_pi, &bomega);
-		if ( num->rvColCnt != 0 ) {
-			pixC = vxMSparse(lamb_pi, &Comega, num->prevCols);
-			delta->vals[lambdaIdx][obs].piC = reduceVector(pixC, coord->rvCols, num->rvColCnt);
-			mem_free(pixC);
+			mem_free(lambdaPi);
 		}
-		else
-			delta->vals[lambdaIdx][obs].piC = NULL;
+	}
+	else {
+		/* Case II: New dual vector encountered. */
+		if ( !(delta->vals[elemIdx] = (pixbCType *) arr_alloc(deltaRowLength, pixbCType)))
+			errMsg("allocation", "calcDeltaRow", "delta->val[cnt]", 0);
+
+		/* expand the compressed lambda vector */
+		lambdaPi = expandVector(lambda->vals[elemIdx], coord->rvRows, num->rvRowCnt, num->rows);
+
+		/* go through all the observations and compute pi x b and pi x C */
+		for (idx = 0; idx < omega->cnt; idx++) {
+
+			bOmega.val= omega->vals[idx];
+			COmega.val = omega->vals[idx] + num->rvbOmCnt;
+
+			delta->vals[elemIdx][idx].pib = vXvSparse(lambdaPi, &bOmega);
+			if ( num->rvCOmCnt != 0 ) {
+				piCrossC = vxMSparse(lambdaPi, &COmega, num->prevCols);
+				delta->vals[elemIdx][idx].piC = reduceVector(piCrossC, coord->rvCOmCols, num->rvCOmCnt);
+				mem_free(piCrossC);
+			}
+			else
+				delta->vals[elemIdx][idx].piC = NULL;
+		}
+		mem_free(lambdaPi);
 	}
 
-	mem_free(lamb_pi);
-
 	return 0;
-
-}//END calcDeltaRow()
+}//END calcDelta()
 
 /* This function allocates memory for an omega structure.  It allocates the memory to structure elements: a dVector to hold an array of
  * observation and the probability associated with it. */
-omegaType *newOmega(stocType *stoc) {
+omegaType *newOmega(stocType *stoc, int maxObs) {
 	omegaType *omega;
 	int cnt, i, base, idx;
 
 	omega = (omegaType *) mem_malloc(sizeof(omegaType));
-	omega->probs = (dVector) arr_alloc(config.MAX_OBS, double);
-	omega->weights = (iVector) arr_alloc(config.MAX_OBS, int);
-	omega->vals = (dVector *) arr_alloc(config.MAX_OBS, dVector);
+	omega->probs = (dVector) arr_alloc(maxObs, double);
+	omega->weights = (iVector) arr_alloc(maxObs, int);
+	omega->vals = (dVector *) arr_alloc(maxObs, dVector);
 	omega->sampleMean = (dVector) arr_alloc(stoc->numOmega+1, double);
-	omega->cnt = 0; omega->numRV = stoc->numOmega;
+	omega->cnt = 0;
+	omega->numRV = stoc->numOmega;
+	omega->numObs = 0;
 
-	if ( config.SAMPLING_TYPE == 2 ) {
-		return omega;
-	}
-	else if ( config.SAMPLING_TYPE == 1) {
-		omega->cnt = config.MAX_OBS;
+	if ( config.SAMPLING_TYPE != 0 ) {
 		return omega;
 	}
 
@@ -308,12 +338,16 @@ deltaType *newDelta(int numDelta) {
 	return delta;
 }//END newDelta()
 
-void freeLambdaType (lambdaType *lambda) {
+void freeLambdaType(lambdaType *lambda, bool partial) {
+	int n;
 
-	if ( lambda ) {
-		if (lambda->vals ) {
-			for ( int n = 0; n < lambda->cnt; n++ ) {
+	if (lambda) {
+		if (lambda->vals) {
+			for ( n = 0; n < lambda->cnt; n++ )
 				if (lambda->vals[n]) mem_free(lambda->vals[n]);
+			if ( partial ) {
+				lambda->cnt = 0;
+				return;
 			}
 			mem_free(lambda->vals);
 		}
@@ -322,38 +356,46 @@ void freeLambdaType (lambdaType *lambda) {
 
 }//END freeLambdaType()
 
-void freeSigmaType (sigmaType *sigma) {
+void freeSigmaType(sigmaType *sigma, bool partial) {
+	int n;
 
-	if ( sigma ) {
-		if ( sigma->ck ) mem_free(sigma->ck);
-		if ( sigma->lambdaIdx ) mem_free(sigma->lambdaIdx);
-		if ( sigma->vals ) {
-			for ( int n = 0; n < sigma->cnt; n++ ) {
-				if ( sigma->vals[n].piC ) mem_free(sigma->vals[n].piC);
-			}
-			mem_free(sigma->vals);
+	if (sigma) {
+		for ( n = 0; n < sigma->cnt; n++ )
+			if (sigma->vals[n].piC) mem_free(sigma->vals[n].piC);
+		if ( partial ) {
+			sigma->cnt = 0;
+			return;
 		}
-		mem_free (sigma);
+		if (sigma->lambdaIdx) mem_free(sigma->lambdaIdx);
+		if (sigma->vals) mem_free(sigma->vals);
+		if (sigma->ck) mem_free(sigma->ck);
+		mem_free(sigma);
 	}
 
 }//END freeSigmaType()
 
-void freeDeltaType (deltaType *delta, int numLambda, int numOmega) {
+void freeDeltaType (deltaType *delta, int numDeltaRows, int omegaCnt, bool partial) {
+	int n, m;
 
-	if ( delta ) {
-		for ( int m = 0; m < numLambda; m++ ) {
-			if ( delta->vals[m] ) {
-				for ( int n = 0; n < numOmega; n++ ) {
-					if ( delta->vals[m][n].piC ) mem_free(delta->vals[m][n].piC);
+	if (delta) {
+		if (delta->vals) {
+			for ( n = 0; n < numDeltaRows; n++ ) {
+				if (delta->vals[n]) {
+					for ( m = 0; m < omegaCnt; m++ )
+						if (delta->vals[n][m].piC)
+							mem_free(delta->vals[n][m].piC);
+					mem_free(delta->vals[n]);
 				}
-				mem_free(delta->vals[m]);
 			}
+			if ( partial )
+				return;
+			mem_free(delta->vals);
 		}
-		mem_free(delta->vals);
 		mem_free(delta);
 	}
 
 }//END freeDeltaType()
+
 
 void freeOmegaType(omegaType *omega, bool partial) {
 	int n;
@@ -364,11 +406,13 @@ void freeOmegaType(omegaType *omega, bool partial) {
 				mem_free(omega->vals[n]);
 		if ( partial ) {
 			omega->cnt = 0;
+			omega->numObs = 0;
 			return;
 		}
 		mem_free(omega->vals);
 	}
 	if ( omega->probs ) mem_free(omega->probs);
+	if ( omega->weights ) mem_free(omega->weights);
 	if ( omega->sampleMean) mem_free(omega->sampleMean);
 	mem_free(omega);
 

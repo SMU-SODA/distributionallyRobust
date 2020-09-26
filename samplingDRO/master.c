@@ -19,10 +19,11 @@ int solveMaster(numType *num, sparseVector *dBar, cellType *cell) {
 	clock_t	tic;
 
 	if ( config.SAMPLING_TYPE == 2 ) {
-		if( changeEtaCol(cell->master->lp, num->rows, num->cols, cell->k, cell->cuts) ) {
+		if( changeEtaCol(cell->master->lp, num->rows, num->cols, cell->omega->numObs, cell->cuts) ) {
 			errMsg("algorithm", "solveQPMaster", "failed to change the eta column coefficients", 0);
 			return 1;
 		}
+		cell->incumbChg = false;
 	}
 
 #if defined(ALGO_CHECK)
@@ -55,20 +56,19 @@ int solveMaster(numType *num, sparseVector *dBar, cellType *cell) {
 		}
 
 		addVectors(cell->candidX, cell->incumbX, NULL, num->cols);
-		cell->candidEst = vXvSparse(cell->candidX, dBar);
-		cell->candidEst += getPrimalPoint(cell->master->lp, num->cols);
-		cell->gamma = cell->candidEst - cell->incumbEst;
+		cell->candidEst = vXvSparse(cell->candidX, dBar) + getPrimalPoint(cell->master->lp, num->cols);
 	}
 	else {
 		cell->candidEst = getObjective(cell->master->lp, PROB_LP);
 	}
+	cell->gamma = cell->candidEst - cell->incumbEst;
 
 	return 0;
 }//END solveMaster()
 
 /* This subroutine initializes the master problem by copying information from the decomposed prob[0](type: oneProblem) and adding a column for
  * theta for modified benders decomposition. */
-oneProblem *newMaster(oneProblem *orig, double lb, omegaType *omega) {
+oneProblem *newMaster(oneProblem *orig, double lb) {
 	oneProblem 	*master;
 	int         r, i, j, idx, cnt;
 	long        colOffset, rowOffset;
@@ -229,14 +229,15 @@ int addCut2Master(cellType *cell, cutsType *cuts, oneCut *cut, int lenX, int obs
 		}
 	}
 
+	cut->alphaIncumb = cut->alpha;
 	if ( config.MASTER_TYPE == PROB_QP )
-		cut->alphaIncumb = cut->alpha - vXv(cut->beta, cell->incumbX, NULL, lenX);
+		cut->alphaIncumb -= vXv(cut->beta, cell->incumbX, NULL, lenX);
 
 	if (!(indices = arr_alloc(lenX + 1, int)))
 		errMsg("Allocation", "addcut2Master", "fail to allocate memory to coefficients of beta",0);
 	for (cnt = 1; cnt <= lenX; cnt++)
 		indices[cnt] = cnt - 1;
-	indices[0] = lenX+cut->omegaID;
+	indices[0] = lenX;
 
 	/* Add the cut to the cell cuts structure and assign a row number. */
 	cuts->vals[cuts->cnt] = cut;
@@ -257,13 +258,13 @@ int addCut2Master(cellType *cell, cutsType *cuts, oneCut *cut, int lenX, int obs
 
 /* This function performs the updates on all the coefficients of eta in the master problem constraint matrix.  During every iteration,
  * each of the coefficients on eta are increased, so that the effect of the cut on the objective function is decreased. */
-int changeEtaCol(LPptr lp, int numRows, int numCols, int k, cutsType *cuts) {
+int changeEtaCol(LPptr lp, int numRows, int numCols, int currObs, cutsType *cuts) {
 	double	coef[1];
 	int 	c;
 
 	for (c = 0; c < cuts->cnt; c++){
 		/* Currently both incumbent and candidate cuts are treated similarly, and sunk as iterations proceed */
-		coef[0] = (double) (k) / (double) cuts->vals[c]->numSamples;         // coefficient k/j of eta column
+		coef[0] = (double) (currObs) / (double) cuts->vals[c]->numObs;         // coefficient k/j of eta column
 
 		if ( changeCol(lp, numCols, coef, cuts->vals[c]->rowNum, cuts->vals[c]->rowNum+1) ) {
 			errMsg("solver", "changeEtaCol", "failed to change eta column in the stage problem", 0);

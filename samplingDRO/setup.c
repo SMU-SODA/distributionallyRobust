@@ -172,11 +172,8 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 
 	cell->candidX = cell->incumbX = NULL;
 
-	/* stochastic elements */
-	cell->omega  = newOmega(stoc);
-
 	/* setup the master problem */
-	cell->master = newMaster(prob[0]->sp, prob[0]->lb, cell->omega);
+	cell->master = newMaster(prob[0]->sp, prob[0]->lb);
 	if ( cell->master == NULL ) {
 		errMsg("setup", "newCell", "failed to setup the master problem", 0);
 		return NULL;
@@ -200,6 +197,10 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	cell->optFlag 	 = false;
 	cell->spFeasFlag = true;
 	cell->infeasIncumb = false;
+	cell->incumbChg = false;
+	cell->iCutIdx   = 0;
+	cell->iCutUpdt  = 0;
+	cell->gamma		= 0.0;
 
 	/* incumbent solution and estimates */
 	if (config.MASTER_TYPE == PROB_QP || config.SAMPLING_TYPE == 2 ) {
@@ -207,23 +208,20 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 
 		cell->quadScalar= config.MIN_QUAD_SCALAR;     						/* The quadratic scalar, 'sigma'*/
 		cell->incumbEst = cell->candidEst;
-		cell->incumbChg = false;
-		cell->iCutIdx   = 0;
-		cell->gamma		= 0.0;
 
-		cell->maxCuts = config.CUT_MULT*prob[0]->num->cols + 1;
+		if ( config.MASTER_TYPE == PROB_QP ) {
+			cell->maxCuts = config.CUT_MULT*prob[0]->num->cols + 1;
+		}
+		else {
+			cell->maxCuts = config.MAX_ITER + config.MAX_ITER / config.TAU + 1;
+		}
 
 		if ( !(cell->piM = (dVector) arr_alloc(prob[0]->num->rows + cell->maxCuts + 1, double)) )
 			errMsg("allocation", "newMaster", "cell->piM", 0);
 	}
 	else {
 		cell->incumbX   = NULL;
-
 		cell->quadScalar= 0.0;
-		cell->incumbChg = false;
-		cell->iCutIdx   = 0;
-		cell->gamma		= 0.0;
-
 		cell->maxCuts = config.MAX_ITER;
 		cell->piM = NULL;
 	}
@@ -238,7 +236,7 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	cell->time->subprobIter = cell->time->subprobAccumTime = 0.0;
 	cell->time->optTestIter = cell->time->optTestAccumTime = 0.0;
 	cell->time->argmaxIter = cell->time->argmaxAccumTime = 0.0;
-	cell->time->reduceTime = 0.0;
+	cell->time->distSepTime = 0.0;
 
 	/* construct the QP using the current incumbent */
 	if ( config.MASTER_TYPE == PROB_QP ) {
@@ -248,11 +246,19 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 		}
 	}
 
+	/* stochastic elements */
+	int len;
+	if ( config.SAMPLING_TYPE ==  1)
+		len = config.MAX_OBS;
+	else
+		len = config.MAX_ITER + config.MAX_ITER / config.TAU + 1;
+
+	cell->omega  = newOmega(stoc, len);
 	if ( config.SAMPLING_TYPE == 2 ) {
 		/* Initialize all the elements which will be used to store dual information */
-		cell->lambda = newLambda(cell->omega->cnt*config.MAX_ITER);
-		cell->sigma  = newSigma(cell->omega->cnt*config.MAX_ITER);
-		cell->delta  = newDelta(cell->omega->cnt*config.MAX_ITER);
+		cell->lambda = newLambda(len);
+		cell->sigma  = newSigma(len);
+		cell->delta  = newDelta(len);
 	}
 	else {
 		cell->lambda = NULL;
@@ -291,26 +297,32 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 		cell->incumbChg = true;
 	}
 
-	/* oneProblem structures and solver elements */
+	/* Master oneProblem structures and solver elements */
 	for ( cnt = prob->num->rows+cell->cuts->cnt-1; cnt >= prob->num->rows; cnt-- )
 		if (  removeRow(cell->master->lp, cnt, cnt) ) {
 			errMsg("solver", "cleanCellType", "failed to remove a row from master problem", 0);
 			return 1;
 		}
 	cell->master->mar = prob->num->rows;
-	if( changeQPproximal(cell->master->lp, prob->num->cols, cell->quadScalar, 0)) {
-		errMsg("algorithm", "cleanCellType", "failed to change the proximal term", 0);
-		return 1;
+
+	if ( config.MASTER_TYPE == PROB_QP ) {
+		if( changeQPproximal(cell->master->lp, prob->num->cols, cell->quadScalar, 0)) {
+			errMsg("algorithm", "cleanCellType", "failed to change the proximal term", 0);
+			return 1;
+		}
 	}
 
 	/* cuts */
 	if (cell->cuts) freeCutsType(cell->cuts, true);
 
 	/* stochastic components */
-	if ( config.SAMPLING_TYPE == 1 ) {
-		cnt = cell->omega->cnt;
+	if ( config.SAMPLING_TYPE != 0 ) {
 		if (cell->omega) freeOmegaType(cell->omega, true);
-		cell->omega->cnt = cnt;
+		if ( config.SAMPLING_TYPE == 2 ) {
+			if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->cnt, true);
+			if (cell->lambda) freeLambdaType(cell->lambda, true);
+			if (cell->sigma) freeSigmaType(cell->sigma, true);
+		}
 	}
 
 	/* reset all the clocks */
@@ -320,7 +332,7 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 	cell->time->subprobIter = cell->time->subprobAccumTime = 0.0;
 	cell->time->optTestIter = cell->time->optTestAccumTime = 0.0;
 	cell->time->argmaxIter = cell->time->argmaxAccumTime = 0.0;
-	cell->time->reduceTime = 0.0;
+	cell->time->distSepTime = 0.0;
 
 	if ( config.MASTER_TYPE == PROB_QP ) {
 		if ( constructQP(prob, cell, cell->incumbX, cell->quadScalar) ) {
@@ -338,8 +350,6 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 #endif
 	}
 
-	freeOneProblem(cell->sep);
-
 	return 0;
 }//END cleanCellType()
 
@@ -353,10 +363,10 @@ void freeCellType(cellType *cell) {
 		if (cell->cuts) freeCutsType(cell->cuts, false);
 		if (cell->piM) mem_free(cell->piM);
 		if (cell->time) mem_free(cell->time);
-		if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->cnt);
+		if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->cnt, false);
 		if (cell->omega) freeOmegaType(cell->omega, false);
-		if (cell->lambda) freeLambdaType(cell->lambda);
-		if (cell->sigma) freeSigmaType(cell->sigma);
+		if (cell->lambda) freeLambdaType(cell->lambda, false);
+		if (cell->sigma) freeSigmaType(cell->sigma, false);
 		mem_free(cell);
 	}
 
