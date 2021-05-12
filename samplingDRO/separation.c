@@ -317,7 +317,7 @@ int cleanDistSepProb(oneProblem *sep, dVector stocMean, omegaType *omega, int nu
 	 */
 	{
 		int mac = getNumCols(sep->lp);
-		if (  removeColumn(sep->lp, 0, mac-1) ) {
+		if (  removeColumns(sep->lp, 0, mac-1) ) {
 			errMsg("solver", "cleanDistSepProb", "failed to remove a column from the distribution separation problem problem", 0);
 			return 1;
 		}

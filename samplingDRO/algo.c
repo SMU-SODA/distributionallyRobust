@@ -103,7 +103,10 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 			fprintf(detailedResults,"\n");
 	}
 
-	printf("\n\nSuccessfully completed the DR-SD algorithm with %s setting.\n", (config.DRO_TYPE == RISK_NEUTRAL) ? "Risk-neutral" : "Moment Ambiguity");
+	if ( config.SAMPLING_TYPE == 1)
+		printf("\n\nSuccessfully completed the DR-LS algorithm with %s setting.\n", (config.DRO_TYPE == RISK_NEUTRAL) ? "Risk-neutral" : "Moment Ambiguity");
+	else
+		printf("\n\nSuccessfully completed the DR-SD algorithm with %s setting.\n", (config.DRO_TYPE == RISK_NEUTRAL) ? "Risk-neutral" : "Moment Ambiguity");
 
 	/* release structures and close solver environment */
 	if (cell) freeCellType(cell);
@@ -148,7 +151,7 @@ int solveFixedDROCell(probType **prob, cellType *cell) {
 		}
 
 		/******* 3. Solve the master problem to obtain the new candidate solution *******/
-		if ( solveMaster(prob[0]->num, prob[0]->dBar, cell) ) {
+		if ( solveMaster(prob[0]->num, prob[0]->dBar, cell, prob[0]->lb) ) {
 			errMsg("algorithm", "solveCell", "failed to solve master problem", 0);
 			return 1;
 		}
@@ -217,7 +220,7 @@ int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell) {
 			checkImprovement(prob[0], cell, candidCut);
 
 		/******* 6. Solve the master problem to obtain the new candidate solution */
-		if ( solveMaster(prob[0]->num, prob[0]->dBar, cell) ) {
+		if ( solveMaster(prob[0]->num, prob[0]->dBar, cell, prob[0]->lb) ) {
 			errMsg("algorithm", "solveCell", "failed to solve master problem", 0);
 			return 1;
 		}

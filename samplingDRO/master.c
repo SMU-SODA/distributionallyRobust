@@ -14,7 +14,7 @@ extern configType config;
 
 /* In this his function the master problem is solved after the newest cut is added to master problem, the incumbent cut is updated if necessary.
  * Here the coefficients on all the cuts are updated, and finally master problem is solved. */
-int solveMaster(numType *num, sparseVector *dBar, cellType *cell) {
+int solveMaster(numType *num, sparseVector *dBar, cellType *cell, double lb) {
 	int 	status;
 	clock_t	tic;
 
@@ -25,6 +25,8 @@ int solveMaster(numType *num, sparseVector *dBar, cellType *cell) {
 		}
 		cell->incumbChg = false;
 	}
+
+
 
 #if defined(ALGO_CHECK)
 	writeProblem(cell->master->lp,"cellMaster.lp");
@@ -320,6 +322,34 @@ int changeQPproximal(LPptr lp, int numCols, double sigma, int numEta) {
 	mem_free(qsepvec);
 	return 0;
 }//END changeQPproximal()
+
+int updateRHS(LPptr lp, cutsType *cuts, int numIter, double lb) {
+	int 	cnt;
+	dVector	rhs;
+	iVector	indices;
+
+	if (!(rhs = arr_alloc(cuts->cnt, double)))
+		errMsg("allocation", "updateRHS", "rhs", 0);
+	if (!(indices = arr_alloc(cuts->cnt, int)))
+		errMsg("allocation", "updateRHS", "indices", 0);
+
+	for (cnt = 0; cnt < cuts->cnt; cnt++) {
+		rhs[cnt] = cuts->vals[cnt]->alphaIncumb + ((double) numIter / (double) cuts->vals[cnt]->numObs - 1) * lb;
+		indices[cnt] = cuts->vals[cnt]->rowNum;
+	}
+
+	/* Now we change the right-hand of the master problem. */
+	if ( changeRHS(lp, cuts->cnt, indices, rhs) ) {
+		errMsg("solver", "updateRHS", "failed to change the right-hand side in the solver", 0);
+		return 1;
+	}
+
+	mem_free(rhs);
+	mem_free(indices);
+
+	return 0;
+}//END updateRHS
+
 
 /* In the regularized QP method, we need to change the rhs of x to d. The
  * 		 A * x 			= b

@@ -65,7 +65,7 @@ int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmega
 
 	if ( cnt == omega->cnt ) {
 		/* New observation encountered, then add the realization vector to the list. */
-		omega->vals[omega->cnt] = duplicVector(observ, omega->numOmega);
+		omega->vals[omega->cnt] = duplicVector(observ, omega->numOmega+1);
 		omega->weights[omega->cnt] = 1;
 		(*newOmegaFlag) = true;
 		omega->cnt++;
@@ -86,7 +86,7 @@ int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmega
 
 #ifdef STOCH_CHECK
 	printf("Observation (%d): ", *newOmegaFlag);
-	printVector(omega->vals[omega->cnt], end - begin, NULL);
+	printVector(omega->vals[cnt], omega->numOmega, NULL);
 #endif
 
 	return cnt;

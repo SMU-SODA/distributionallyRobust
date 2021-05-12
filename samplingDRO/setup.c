@@ -133,6 +133,13 @@ int setupAlgo(oneProblem *orig, stocType *stoc, timeType *tim, probType ***prob,
 		goto TERMINATE;
 	}
 
+	/* calculate lower bounds for each stage */
+	lb = calcLowerBound(orig, tim, stoc);
+	if ( lb == NULL )  {
+		errMsg("setup", "setupAlgo", "failed to compute lower bounds on stage problem", 0);
+		mem_free(lb); return 1;
+	}
+
 	/* decompose the problem into master and subproblem */
 	(*prob) = newProb(orig, stoc, tim, lb, config.TOLERANCE);
 	if ( (*prob) == NULL ) {
@@ -192,7 +199,7 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	cell->LPcnt = 0;
 
 	/* candidate solution and estimates */
-	cell->candidX 	= duplicVector(xk, prob[0]->num->cols);
+	cell->candidX 	= duplicVector(xk, prob[0]->num->cols+1);
 	cell->candidEst	= prob[0]->lb + vXvSparse(cell->candidX, prob[0]->dBar);
 
 	/* optimality and feasibility flags */
@@ -206,7 +213,7 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 
 	/* incumbent solution and estimates */
 	if (config.MASTER_TYPE == PROB_QP || config.SAMPLING_TYPE == 2 ) {
-		cell->incumbX   = duplicVector(xk, prob[0]->num->cols);
+		cell->incumbX   = duplicVector(xk, prob[0]->num->cols+1);
 
 		cell->quadScalar= config.MIN_QUAD_SCALAR;     						/* The quadratic scalar, 'sigma'*/
 		cell->incumbEst = cell->candidEst;
@@ -286,11 +293,11 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 	cell->LPcnt = 0;
 	cell->optFlag = false;
 
-	copyVector(xk, cell->candidX, prob->num->cols, true);
+	copyVector(xk, cell->candidX, prob->num->cols+1);
 	cell->candidEst	= prob->lb + vXvSparse(cell->candidX, prob->dBar);
 
 	if (config.MASTER_TYPE == PROB_QP) {
-		copyVector(xk, cell->incumbX, prob->num->cols, true);
+		copyVector(xk, cell->incumbX, prob->num->cols+1);
 		cell->incumbEst = cell->candidEst;
 		cell->quadScalar= config.MIN_QUAD_SCALAR;
 

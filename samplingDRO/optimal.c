@@ -89,7 +89,7 @@ int checkImprovement(probType *prob, cellType *cell, int candidCut) {
 int replaceIncumbent(cellType *cell, double candidEst, int numCols) {
 
 	/* replace the incumbent solution with the candidate solution */
-	copyVector(cell->candidX, cell->incumbX, numCols, 1);
+	copyVector(cell->candidX, cell->incumbX, numCols+1);
 	cell->incumbEst = candidEst;
 
 	/* update the candidate cut as the new incumbent cut */

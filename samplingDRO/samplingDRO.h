@@ -13,7 +13,7 @@
 #define SAMPLINGDRO_H_
 
 #include "utils.h"
-#include "solver.h"
+#include "solver_cplex.h"
 #include "smps.h"
 #include "prob.h"
 
@@ -21,7 +21,8 @@
 #if defined(DEBUG)
 #undef SETUP_CHECK
 #define ALGO_CHECK
-#undef CUT_CHECK
+#define STOCH_CHECK
+#define CUT_CHECK
 #define SEP_CHECK
 #undef EVAL_CHECK
 #endif
@@ -190,12 +191,13 @@ int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell);
 bool optimal(probType *prob, cellType *cell);
 
 /* master.c */
-int solveMaster(numType *num, sparseVector *dBar, cellType *cell);
+int solveMaster(numType *num, sparseVector *dBar, cellType *cell, double lb);
 int checkImprovement(probType *prob, cellType *cell, int candidCut);
 int replaceIncumbent(cellType *cell, double candidEst, int numCols);
 int constructQP(probType *prob, cellType *cell, dVector incumbX, double quadScalar);
 int changeEtaCol(LPptr lp, int numRows, int numCols, int k, cutsType *cuts);
 int changeQPproximal(LPptr lp, int numCols, double sigma, int numEta);
+int updateRHS(LPptr lp, cutsType *cuts, int numIter, double lb);
 int changeQPrhs(probType *prob, cellType *cell, dVector xk);
 int changeQPbds(LPptr lp, int numCols, dVector bdl, dVector bdu, dVector xk);
 int addCut2Master(cellType *cell, cutsType *cuts, oneCut *cut, int lenX, int obsID);

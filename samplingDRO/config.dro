@@ -2,7 +2,7 @@
 TOLERANCE    0.001
 
 // Minimum iterations
-MIN_ITER   1
+MIN_ITER   512
 
 // Maximum number of iterations
 MAX_ITER   1000
@@ -63,7 +63,7 @@ RUN_SEED    1395182510837913
 RUN_SEED    3735836402047426
 
 // Indicate whether to employ (by setting equal to 1) evaluation of the eventual solution
-EVAL_FLAG 0
+EVAL_FLAG 1
 
 // Solution tolerance for deciding the usage of mean solution.
 EVAL_MIN_ITER 250
@@ -106,10 +106,10 @@ EVAL_SEED	4742397086462006
 
 // ******************** Sample Average Approximation ********************
 // Set to (0) for full sample, (1) if sample average approximation and (2) for sequential sample
-SAMPLING_TYPE 2
+SAMPLING_TYPE 1
 
 // Number of observations to be used to set the sample average approximation
-MAX_OBS 50
+MAX_OBS 250
 
 // ******************** Distribution robust parameters ********************
 // Type of ambiguity set: Risk-neutral (0), Moment-matching (1)
@@ -117,6 +117,6 @@ DRO_TYPE 1
 
 // Parameters associated with the ambiguity set
 // Moment-based ambiguity set: Parameter 1 = number of moments and Parameter 2 = bounding error
-DRO_PARAM_1 2
+DRO_PARAM_1 1
 DRO_PARAM_2 0.05
 
