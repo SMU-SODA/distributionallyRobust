@@ -65,7 +65,7 @@ int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVec
 	dVector rhsx;
 	int idx, numMoments = config.DRO_PARAM_1;
 
-	if ( config.SAMPLING_TYPE == 2 && newOmegaFlag ) {
+	if ( config.ALGO_TYPE == SD && newOmegaFlag ) {
 		/* Add a new column to the distribution separation problem corresponding to the latest observation */
 		iVector cmatind;
 		dVector cmatval;
@@ -118,6 +118,8 @@ int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVec
 		mem_free(rhsx);
 	}
 
+	writeProblem(sep->lp, "cellSepProb.lp");
+
 	/* Update the objective coefficients with the recourse function estimates */
 	indices = (iVector) arr_alloc(omega->cnt, int);
 	for ( int n = 0; n < omega->cnt; n++ ) {
@@ -153,7 +155,17 @@ oneProblem *newDistSepProb(dVector stocMean, omegaType *omega) {
 		return dist;
 	}
 	else if ( config.DRO_TYPE == MOMENT_MATCHING ) {
+		/* Obtain the necessary statistics for creating a distribution separation problem */
+		refineOmega(omega, stocMean);
+
 		dist = newDistSepProb_MM(stocMean, omega);
+		if ( dist == NULL ) {
+			errMsg("solve", "newDistSepProb", "unknown distribution type requested in DRO_TYPE", 0);
+			return NULL;
+		}
+	}
+	else if ( config.DRO_TYPE == WASSERSTEIN ) {
+		dist = newDistSepProb_W(omega);
 		if ( dist == NULL ) {
 			errMsg("solve", "newDistSepProb", "unknown distribution type requested in DRO_TYPE", 0);
 			return NULL;
@@ -191,46 +203,29 @@ oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega) {
 	dist->numnz   = 0;
 
 	/* Allocate memory to the information whose type is cString */
-	if (!(dist->name = (cString) arr_alloc(NAMESIZE, char)))
-		errMsg("Allocation", "newDistSepProb_MM", "Fail to allocate memory to dist->name",0);
-	if (!(dist->senx = (cString) arr_alloc(dist->marsz,char)))
-		errMsg("Allocation", "newDistSepProb_MM", "Fail to allocate memory to dist->senx",0);
-	if (!(dist->ctype = (cString) arr_alloc(dist->macsz,char)))
-		errMsg("Allocation", "newDistSepProb_MM", "Fail to allocate memory to dist->ctype",0);
-	if (!(dist->objname = (cString) arr_alloc(NAMESIZE,char)))
-		errMsg("Allocation", "newDistSepProb_MM", "Fail to allocate memory to dist->objname",0);
-	if (!(dist->cname = (cString*) arr_alloc(dist->macsz,cString)))
-		errMsg("Allocation", "newDistSepProb_MM", "Fail to allocate memory to dist->cname",0);
-	if (!(dist->cstore = (cString) arr_alloc(dist->cstorsz, char)))
-		errMsg("Allocation", "newDistSepProb_MM", "Fail to allocate memory to dist->cstore",0);
-	if (!(dist->rname = (cString *) arr_alloc(dist->marsz,cString)))
-		errMsg("Allocation", "newDistSepProb_MM", "Fail to allocate memory to dist->rname",0);
-	if (!(dist->rstore = (cString) arr_alloc(dist->rstorsz, char)))
-		errMsg("Allocation", "newDistSepProb_MM", "Fail to allocate memory to dist->rstore",0);
+	dist->name = (cString) arr_alloc(NAMESIZE, char);
+	dist->senx = (cString) arr_alloc(dist->marsz,char);
+	dist->ctype = (cString) arr_alloc(dist->macsz,char);
+	dist->objname = (cString) arr_alloc(NAMESIZE,char);
+	dist->cname = (cString*) arr_alloc(dist->macsz,cString);
+	dist->cstore = (cString) arr_alloc(dist->cstorsz, char);
+	dist->rname = (cString *) arr_alloc(dist->marsz,cString);
+	dist->rstore = (cString) arr_alloc(dist->rstorsz, char);
 
 	/* Allocate memory to the information whose type is dVector */
-	if (!(dist->objx = (dVector) arr_alloc(dist->macsz, double)))
-		errMsg("Allocation", "newDistSepProb_MM", "Fail to allocate memory to dist->objx",0);
-	if (!(dist->rhsx = (dVector) arr_alloc(dist->marsz, double)))
-		errMsg("Allocation", "newDistSepProb_MM", "Fail to allocate memory to dist->rhsx",0);
-	if (!(dist->matval = (dVector) arr_alloc(dist->matsz, double)))
-		errMsg("allocation", "newDistSepProb_MM", "dist->matval",0);
-	if (!(dist->bdl = (dVector) arr_alloc(dist->macsz, double)))
-		errMsg("allocation", "newDistSepProb_MM", "dist->bdl",0);
-	if (!(dist->bdu = (dVector) arr_alloc(dist->macsz, double)))
-		errMsg("allocation", "newDistSepProb_MM", "dist->bdu",0);
+	dist->objx = (dVector) arr_alloc(dist->macsz, double);
+	dist->rhsx = (dVector) arr_alloc(dist->marsz, double);
+	dist->matval = (dVector) arr_alloc(dist->matsz, double);
+	dist->bdl = (dVector) arr_alloc(dist->macsz, double);
+	dist->bdu = (dVector) arr_alloc(dist->macsz, double);
 
 	/* Allocate memory to the information whose type is iVector */
-	if (!(dist->matbeg = (iVector) arr_alloc(dist->macsz, int)))
-		errMsg("allocation", "newDistSepProb_MM", "dist->matbeg",0);
-	if (!(dist->matcnt = (iVector) arr_alloc(dist->macsz, int)))
-		errMsg("allocation", "newDistSepProb_MM", "dist->matcnt",0);
-	if (!(dist->matind = (iVector) arr_alloc(dist->matsz, int)))
-		errMsg("allocation", "newDistSepProb_MM", "dist->matind",0);
+	dist->matbeg = (iVector) arr_alloc(dist->macsz, int);
+	dist->matcnt = (iVector) arr_alloc(dist->macsz, int);
+	dist->matind = (iVector) arr_alloc(dist->matsz, int);
 
-
-	strcpy(dist->name, "DistSepProb");           /* Copy problem name */
-	strcpy(dist->objname, "DistSep_Obj");     /* Copy objective name */
+	strcpy(dist->name, "DistSepProb_MM");          	/* Copy problem name */
+	strcpy(dist->objname, "DistSep_Obj");     		/* Copy objective name */
 
 	/* Add columns to the problem: one for every scenario */
 	offset = 0;
@@ -238,6 +233,7 @@ oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega) {
 		sprintf(tempName,"obs[%d]", obs);
 		strcpy(dist->cstore + offset, tempName);
 		dist->cname[obs]  = dist->cstore + offset;
+		offset += strlen(tempName) + 1;
 		dist->objx[obs]   = 1.0;
 		dist->ctype[obs]  = 'C';
 		dist->bdu[obs]    = 1.0;
@@ -258,8 +254,6 @@ oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega) {
 		dist->matind[dist->numnz]   = rowID;
 		dist->matval[dist->numnz++] = 1;
 		dist->matcnt[obs]++;
-
-		offset += strlen(tempName) + 1;
 	}
 
 	/* Add rows to the problem: one for every random variable and moment */
@@ -306,6 +300,176 @@ oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega) {
 	return dist;
 }//END newDistProb()
 
+oneProblem *newDistSepProb_W(omegaType *omega) {
+	oneProblem *dist = NULL;
+	char tempName[NAMESIZE];
+	double **distMatrix;
+
+	/* Calculate the distance matrix between all the observation */
+	distMatrix = (double **) arr_alloc(omega->cnt, double *);
+	for ( int i = 0; i < omega->cnt; i++ ) {
+		distMatrix[i] = (double *) arr_alloc(omega->cnt, double);
+		for (int j = i+1; j < omega->cnt; j++ ) {
+			distMatrix[i][j] = pNorm(omega->vals[i], omega->vals[j], omega->numOmega, config.DRO_PARAM_1);
+		}
+	}
+
+	/* Allocate memory */
+	dist = (oneProblem *) mem_malloc (sizeof(oneProblem));
+
+	/* Initialize essential elements */
+	dist->type   = PROB_LP;
+	dist->objsen = -1;                 			/* sense of the objective: 1 for minimization and -1 for maximization */
+	dist->mar 	 = 2*omega->cnt + 2;			/* number of rows is equal to number of moments times number of random variables plus one */
+	dist->mac    = omega->cnt*(omega->cnt + 1);	/* number of columns is equal to the number of observations */
+	dist->numInt = 0;                 			/* number of integer variables in the problem  */
+
+	dist->marsz   = dist->mar;
+	dist->macsz   = dist->mac;
+	dist->matsz   = dist->mar*dist->mac;
+	dist->rstorsz = dist->mar*NAMESIZE;
+	dist->cstorsz = dist->mac*NAMESIZE;
+	dist->numnz   = 0;
+
+	/* Allocate memory to the information whose type is cString */
+	dist->name = (cString) arr_alloc(NAMESIZE, char);
+	dist->senx = (cString) arr_alloc(dist->marsz,char);
+	dist->ctype = (cString) arr_alloc(dist->macsz,char);
+	dist->objname = (cString) arr_alloc(NAMESIZE,char);
+	dist->cname = (cString*) arr_alloc(dist->macsz,cString);
+	dist->cstore = (cString) arr_alloc(dist->cstorsz, char);
+	dist->rname = (cString *) arr_alloc(dist->marsz,cString);
+	dist->rstore = (cString) arr_alloc(dist->rstorsz, char);
+
+	/* Allocate memory to the information whose type is dVector */
+	dist->objx = (dVector) arr_alloc(dist->macsz, double);
+	dist->rhsx = (dVector) arr_alloc(dist->marsz, double);
+	dist->matval = (dVector) arr_alloc(dist->matsz, double);
+	dist->bdl = (dVector) arr_alloc(dist->macsz, double);
+	dist->bdu = (dVector) arr_alloc(dist->macsz, double);
+
+	/* Allocate memory to the information whose type is iVector */
+	dist->matbeg = (iVector) arr_alloc(dist->macsz, int);
+	dist->matcnt = (iVector) arr_alloc(dist->macsz, int);
+	dist->matind = (iVector) arr_alloc(dist->matsz, int);
+
+	strcpy(dist->name, "DistSepProb_W");          	/* Copy problem name */
+	strcpy(dist->objname, "DistSep_Obj");     		/* Copy objective name */
+
+	/* Add columns to the problem: one for every scenario */
+	/* a. marginal variables (p) */
+	int offset = 0, rowID = 0, colID = 0;
+	for ( int obs = 0; obs < omega->cnt; obs++ ) {
+
+		sprintf(tempName,"prob[%d]", obs);
+		strcpy(dist->cstore + offset, tempName);
+		dist->cname[colID]  = dist->cstore + offset;
+		offset += strlen(tempName) + 1;
+		dist->objx[colID]   = 1.0;
+		dist->ctype[colID]  = 'C';
+		dist->bdu[colID]    = 1.0;
+		dist->bdl[colID]    = 0.0;
+		dist->matbeg[colID] = dist->numnz;
+
+		dist->matind[dist->numnz] = 0;
+		dist->matval[dist->numnz++] = 1.0;
+		dist->matind[dist->numnz] = obs+1;
+		dist->matval[dist->numnz++] = -1.0;
+
+		dist->matcnt[colID++] += 2;
+	}
+
+	/* b. joint probability variables (eta) */
+	for ( int i = 0; i < omega->cnt; i++ ) {
+		for ( int j = 0; j < omega->cnt; j++ ) {
+			if ( i != j ) {
+				sprintf(tempName,"eta[%d][%d]", i, j);
+				strcpy(dist->cstore + offset, tempName);
+				dist->cname[colID]  = dist->cstore + offset;
+				offset += strlen(tempName) + 1;
+				dist->objx[colID]   = 0.0;
+				dist->ctype[colID]  = 'C';
+				dist->bdu[colID]    = INFINITY;
+				dist->bdl[colID]    = 0.0;
+				dist->matbeg[colID] = dist->numnz;
+
+				dist->matind[dist->numnz]   = i+1;
+				dist->matval[dist->numnz++] = 1.0;
+
+				dist->matind[dist->numnz]   = omega->cnt+j+1;
+				dist->matval[dist->numnz++] = 1.0;
+
+				dist->matind[dist->numnz]   = 2*omega->cnt+1;
+				dist->matval[dist->numnz++] = distMatrix[i][j];
+
+				dist->matcnt[colID++] += 3;
+			}
+		}
+	}
+
+	/* Add rows to the problem: one for every random variable and moment */
+	/* a. probability sums to one */
+	rowID = 0; offset = 0;
+	sprintf(tempName,"probSum");
+	strcpy(dist->rstore + offset, tempName);
+	dist->rname[rowID] = dist->rstore + offset;
+	dist->rhsx[rowID]  = 1.0;
+	dist->senx[rowID++] = 'E';
+	offset += strlen(tempName) + 1;
+
+	/* b. row sum for joint probability */
+	for ( int rv = 1; rv <= omega->cnt; rv++ ) {
+		sprintf(tempName,"rowSum[%d]", rv-1);
+		strcpy(dist->rstore + offset, tempName);
+		dist->rname[rowID] = dist->rstore + offset;
+		dist->rhsx[rowID]  = 0.0;
+		dist->senx[rowID++] = 'E';
+		offset += strlen(tempName) + 1;
+	}
+
+	/* c. column sum for joint probability */
+	for ( int rv = 1; rv <= omega->cnt; rv++ ) {
+		sprintf(tempName,"colSum[%d]", rv-1);
+		strcpy(dist->rstore + offset, tempName);
+		dist->rname[rowID] = dist->rstore + offset;
+		dist->rhsx[rowID]  = (double) omega->weights[rv-1]/(double) omega->numObs;
+		dist->senx[rowID++] = 'E';
+		offset += strlen(tempName) + 1;
+	}
+
+	/* d. limit on the distance */
+	sprintf(tempName,"distLim");
+	strcpy(dist->rstore + offset, tempName);
+	dist->rname[rowID] = dist->rstore + offset;
+	dist->rhsx[rowID]  = config.DRO_PARAM_2;
+	dist->senx[rowID++] = 'L';
+
+	/* Load the copy into CPLEX dist->mac, dist->mar,*/
+	dist->lp = setupProblem(dist->name, dist->type, colID, rowID, dist->objsen, dist->objx, dist->rhsx, dist->senx,
+			dist->matbeg, dist->matcnt,dist->matind, dist->matval, dist->bdl, dist->bdu, NULL, dist->cname, dist->rname,
+			dist->ctype);
+	if ( dist->lp == NULL ) {
+		errMsg("Problem Setup", "newDistSepProb_MM", "failed to setup master problem in the solver",0);
+		return NULL;
+	}
+
+#if defined(SEP_CHECK)
+	if ( writeProblem(dist->lp, "newDistSep.lp") ) {
+		errMsg("solver", "newDistSepProb_MM", "failed to write distribution separation problem to file", 0);
+		return NULL;
+	}
+#endif
+
+	if ( distMatrix ) {
+		for ( int i = 0; i < omega->cnt; i++ ) {
+			mem_free(distMatrix[i]);
+		}
+		mem_free(distMatrix);
+	}
+
+	return dist;
+}//END newDistSepProb_W()
+
 int cleanDistSepProb(oneProblem *sep, dVector stocMean, omegaType *omega, int numMoments) {
 	dVector rhsx;
 	iVector indices;
@@ -323,7 +487,7 @@ int cleanDistSepProb(oneProblem *sep, dVector stocMean, omegaType *omega, int nu
 		}
 	}
 
-	if ( config.SAMPLING_TYPE == 1 ) {
+	if ( config.ALGO_TYPE != SD ) {
 		/* Add columns corresponding to observations in the current replications. */
 		iVector cmatind;
 		dVector cmatval;

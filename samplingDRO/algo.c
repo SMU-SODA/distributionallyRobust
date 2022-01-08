@@ -52,41 +52,38 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 		}
 
 		/* Setup the initial sample for omega structure */
-		if ( config.SAMPLING_TYPE == 1 ) {
+		if ( config.ALGO_TYPE != SD ) {
 			cell->omega->numObs = config.MAX_OBS;
 			setupSAA(stoc, NULL, &config.RUN_SEED[0], cell->omega->vals, cell->omega->probs, cell->omega->weights,
 					&cell->omega->cnt, cell->omega->numObs, config.TOLERANCE);
-
-			refineOmega(cell->omega, stoc->mean);
 		}
 
 		/* Setup or clean the distribution separation problem */
-		if ( rep == 0 ) {
-			if ( (cell->sep = newDistSepProb(prob[1]->mean, cell->omega)) == NULL) {
-				errMsg("algorithm", "algo", "failed to setup a new distribution separation problem", 0);
-				goto TERMINATE;
-			}
-		}
-		else {
-			if ( cleanDistSepProb(cell->sep, prob[1]->mean, cell->omega, config.DRO_PARAM_1) ) {
-				errMsg("algorithm", "algo", "failed to clean the distribution separation problem", 0);
-				goto TERMINATE;
-			}
+		if ( (cell->sep = newDistSepProb(prob[1]->mean, cell->omega)) == NULL) {
+			errMsg("algorithm", "algo", "failed to setup a new distribution separation problem", 0);
+			goto TERMINATE;
 		}
 
 		tic = clock();
 		/* Use two-stage algorithm to solve the problem */
-		if ( config.SAMPLING_TYPE == 1) {
-			if ( solveFixedDROCell(prob, cell) ) {
-				errMsg("algorithm", "algo", "failed to solve a fixed sample DR cell", 0);
-				goto TERMINATE;
-			}
-		}
-		else if ( config.SAMPLING_TYPE == 2 ) {
+		switch (config.ALGO_TYPE) {
+		case SD:
 			if ( solveDRSDCell(stoc, prob, cell) ) {
 				errMsg("algorithm", "algo", "failed to solve the sequential sample DR cell", 0);
 				goto TERMINATE;
 			}
+			break;
+		case L_SHAPED:
+			if ( solveFixedDROCell(prob, cell) ) {
+				errMsg("algorithm", "algo", "failed to solve a fixed sample DR cell", 0);
+				goto TERMINATE;
+			}
+			break;
+		case REFORM:
+			break;
+		default:
+			errMsg("algorithm", "algo", "unknown algorithm type", 0);
+			break;
 		}
 		cell->time->repTime = ((double) (clock() - tic))/CLOCKS_PER_SEC;
 
@@ -94,19 +91,19 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 		printOptimizationSummary(cell);
 		writeOptimizationStatistics(detailedResults, incumbFile, prob, cell, rep);
 
-		/* evaluating the optimal solution*/
+		/* Evaluating the optimal solution*/
 		if (config.EVAL_FLAG == 1) {
-			dVector evalX = (config.MASTER_TYPE == PROB_QP || config.SAMPLING_TYPE == 2) ? cell->incumbX : cell->candidX;
+			dVector evalX = (config.MASTER_TYPE == PROB_QP || config.ALGO_TYPE == SD) ? cell->incumbX : cell->candidX;
 			evaluate(detailedResults, stoc, prob, cell, evalX);
 		}
 		else
 			fprintf(detailedResults,"\n");
-	}
 
-	if ( config.SAMPLING_TYPE == 1)
-		printf("\n\nSuccessfully completed the DR-LS algorithm with %s setting.\n", (config.DRO_TYPE == RISK_NEUTRAL) ? "Risk-neutral" : "Moment Ambiguity");
-	else
-		printf("\n\nSuccessfully completed the DR-SD algorithm with %s setting.\n", (config.DRO_TYPE == RISK_NEUTRAL) ? "Risk-neutral" : "Moment Ambiguity");
+		/* Free the distribution separation problem */
+		if (cell->sep) freeOneProblem(cell->sep);
+		cell->sep = NULL;
+	}
+	printf("\n\nSuccessfully completed executing the algorithm.\n");
 
 	/* release structures and close solver environment */
 	if (cell) freeCellType(cell);
@@ -236,6 +233,12 @@ int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell) {
 	mem_free(observ);
 	return 0;
 }//END solveDRSDCell()
+
+int solveReformCell(stocType *stoc, probType **prob, cellType *cell) {
+
+
+	return 0;
+}//END solveReformCell()
 
 void writeOptimizationStatistics(FILE *soln, FILE *incumb, probType **prob, cellType *cell, int rep) {
 

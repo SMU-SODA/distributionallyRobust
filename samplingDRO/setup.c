@@ -36,6 +36,9 @@ int readConfig() {
 				config.RUN_SEED = (long long *) mem_realloc(config.RUN_SEED, (maxReps+1)*sizeof(long long));
 			}
 		}
+		else if (!(strcmp(line, "ALGO_TYPE")))
+			fscanf(fptr, "%d", &config.ALGO_TYPE);
+
 		else if (!(strcmp(line, "TOLERANCE")))
 			fscanf(fptr, "%lf", &config.TOLERANCE);
 		else if (!(strcmp(line, "MIN_ITER")))
@@ -70,8 +73,6 @@ int readConfig() {
 
 		else if (!(strcmp(line, "SAA")))
 			fscanf(fptr, "%d", &config.SAA);
-		else if (!(strcmp(line, "SAMPLING_TYPE")))
-			fscanf(fptr, "%d", &config.SAMPLING_TYPE);
 		else if (!(strcmp(line, "MAX_OBS")))
 			fscanf(fptr, "%d", &config.MAX_OBS);
 
@@ -96,6 +97,7 @@ int readConfig() {
 			switch (temp) {
 			case 0: config.DRO_TYPE = RISK_NEUTRAL; break;
 			case 1: config.DRO_TYPE = MOMENT_MATCHING; break;
+			case 2: config.DRO_TYPE = WASSERSTEIN; break;
 			default: errMsg("read", "readConfig", "unrecognized parameter in configuration file", 1); break;
 			}
 		}
@@ -155,10 +157,12 @@ int setupAlgo(oneProblem *orig, stocType *stoc, timeType *tim, probType ***prob,
 	}
 
 	/* create the cells which will be used in the algorithms */
-	(*cell) = newCell(stoc, (*prob), (*meanSol));
-	if ( (*cell) == NULL ) {
-		errMsg("setup", "setupAlgo", "failed to create the necessary cell structure", 0);
-		goto TERMINATE;
+	if ( config.ALGO_TYPE != REFORM ) {
+		(*cell) = newCell(stoc, (*prob), (*meanSol));
+		if ( (*cell) == NULL ) {
+			errMsg("setup", "setupAlgo", "failed to create the necessary cell structure", 0);
+			goto TERMINATE;
+		}
 	}
 
 	mem_free(lb);
@@ -201,6 +205,7 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	/* candidate solution and estimates */
 	cell->candidX 	= duplicVector(xk, prob[0]->num->cols+1);
 	cell->candidEst	= prob[0]->lb + vXvSparse(cell->candidX, prob[0]->dBar);
+	cell->incumbEst = 0.0;
 
 	/* optimality and feasibility flags */
 	cell->optFlag 	 = false;
@@ -212,7 +217,7 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	cell->gamma		= 0.0;
 
 	/* incumbent solution and estimates */
-	if (config.MASTER_TYPE == PROB_QP || config.SAMPLING_TYPE == 2 ) {
+	if (config.MASTER_TYPE == PROB_QP || config.ALGO_TYPE == SD ) {
 		cell->incumbX   = duplicVector(xk, prob[0]->num->cols+1);
 
 		cell->quadScalar= config.MIN_QUAD_SCALAR;     						/* The quadratic scalar, 'sigma'*/
@@ -257,13 +262,13 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 
 	/* stochastic elements */
 	int len;
-	if ( config.SAMPLING_TYPE ==  1)
+	if ( config.ALGO_TYPE ==  L_SHAPED || config.ALGO_TYPE == REFORM)
 		len = config.MAX_OBS;
 	else
 		len = config.MAX_ITER + config.MAX_ITER / config.TAU + 1;
 
 	cell->omega  = newOmega(stoc, len, config.DRO_PARAM_1);
-	if ( config.SAMPLING_TYPE == 2 ) {
+	if ( config.ALGO_TYPE == SD ) {
 		/* Initialize all the elements which will be used to store dual information */
 		cell->lambda = newLambda(len);
 		cell->sigma  = newSigma(len);
@@ -325,9 +330,9 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 	if (cell->cuts) freeCutsType(cell->cuts, true);
 
 	/* stochastic components */
-	if ( config.SAMPLING_TYPE != 0 ) {
+	if ( config.ALGO_TYPE != SD ) {
 		if (cell->omega) freeOmegaType(cell->omega, true);
-		if ( config.SAMPLING_TYPE == 2 ) {
+		if ( config.ALGO_TYPE == REFORM ) {
 			if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->cnt, true);
 			if (cell->lambda) freeLambdaType(cell->lambda, true);
 			if (cell->sigma) freeSigmaType(cell->sigma, true);

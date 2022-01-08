@@ -18,7 +18,7 @@ bool optimal(probType *prob, cellType *cell) {
 	clock_t tic = clock();
 
 	if ( cell->k > config.MIN_ITER ) {
-		if ( config.SAMPLING_TYPE == 1 ) {
+		if ( config.ALGO_TYPE != SD ) {
 			est = vXvSparse(cell->candidX, prob->dBar) + maxCutHeight(cell->cuts, cell->k, cell->candidX, prob->num->cols, prob->lb, false);
 			if (cell->candidEst >= 0){
 				cell->optFlag = (est <= (1 + config.EPSILON) * cell->candidEst);
@@ -29,7 +29,7 @@ bool optimal(probType *prob, cellType *cell) {
 	printf("\tOptimality: Current estimate = %lf; Previous estimate = %lf\n", est, cell->candidEst);
 #endif
 		}
-		else if ( config.SAMPLING_TYPE == 2 ) {
+		else if ( config.ALGO_TYPE == SD ) {
 			est = cell->candidEst;
 			if (cell->candidEst >= 0){
 				cell->optFlag = (est >= (1 - config.EPSILON) * cell->incumbEst);

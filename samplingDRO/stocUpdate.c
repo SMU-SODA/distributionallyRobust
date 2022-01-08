@@ -255,7 +255,7 @@ omegaType *newOmega(stocType *stoc, int maxObs, int numStats) {
 	omega->numObs = 0;
 	omega->numStats = numStats;
 
-	if ( config.SAMPLING_TYPE != 0 ) {
+	if ( config.ALGO_TYPE != 0 ) {
 		return omega;
 	}
 
@@ -275,7 +275,7 @@ omegaType *newOmega(stocType *stoc, int maxObs, int numStats) {
 		}
 		else {
 			omega->cnt = config.MAX_OBS;
-			config.SAMPLING_TYPE = 1;
+			config.ALGO_TYPE = 1;
 		}
 	}
 	else if ( strstr(stoc->type, "INDEP") != NULL ) {
@@ -284,13 +284,13 @@ omegaType *newOmega(stocType *stoc, int maxObs, int numStats) {
 			omega->cnt *= stoc->numVals[i];
 			if (omega->cnt > config.MAX_OBS) {
 				omega->cnt = config.MAX_OBS;
-				config.SAMPLING_TYPE = 1;
+				config.ALGO_TYPE = 1;
 				break;
 			}
 			i++;
 		}
 
-		if ( config.SAMPLING_TYPE == 0 ){
+		if ( config.ALGO_TYPE == 0 ){
 			omega->vals = (dVector *) mem_realloc(omega->vals, omega->cnt*sizeof(dVector));
 			omega->probs = (dVector) mem_realloc(omega->probs, omega->cnt*sizeof(double));
 			for ( cnt = 0; cnt < omega->cnt; cnt++) {
@@ -308,7 +308,7 @@ omegaType *newOmega(stocType *stoc, int maxObs, int numStats) {
 	}
 	else {
 		omega->cnt = config.MAX_OBS;
-		config.SAMPLING_TYPE = 1;
+		config.ALGO_TYPE = 1;
 	}
 
 	return omega;

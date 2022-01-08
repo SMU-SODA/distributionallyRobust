@@ -18,7 +18,7 @@ int solveMaster(numType *num, sparseVector *dBar, cellType *cell, double lb) {
 	int 	status;
 	clock_t	tic;
 
-	if ( config.SAMPLING_TYPE == 2 ) {
+	if ( config.ALGO_TYPE == SD ) {
 		if( changeEtaCol(cell->master->lp, num->rows, num->cols, cell->omega->numObs, cell->cuts) ) {
 			errMsg("algorithm", "solveQPMaster", "failed to change the eta column coefficients", 0);
 			return 1;
@@ -349,7 +349,6 @@ int updateRHS(LPptr lp, cutsType *cuts, int numIter, double lb) {
 
 	return 0;
 }//END updateRHS
-
 
 /* In the regularized QP method, we need to change the rhs of x to d. The
  * 		 A * x 			= b

@@ -17,22 +17,31 @@
 #include "smps.h"
 #include "prob.h"
 
-#undef DEBUG
+#define DEBUG
 #if defined(DEBUG)
 #undef SETUP_CHECK
-#define ALGO_CHECK
-#define STOCH_CHECK
-#define CUT_CHECK
 #define SEP_CHECK
+#undef ALGO_CHECK
+#undef STOCH_CHECK
+#undef CUT_CHECK
 #undef EVAL_CHECK
 #endif
 
 enum droType {
 	RISK_NEUTRAL,
-	MOMENT_MATCHING
+	MOMENT_MATCHING,
+	WASSERSTEIN
 }droType;
 
+enum algoType {
+	SD,
+	L_SHAPED,
+	REFORM
+};
+
 typedef struct{
+	int		ALGO_TYPE;			/* Set to (0)stochastic decomposition, (2) L-shaped, and (3) reformulation approach. */
+
 	int 	MULTIPLE_REP;		/* Number of replications (integer) */
 	long long *RUN_SEED;		/* seed used during optimization */
 
@@ -44,8 +53,9 @@ typedef struct{
 	double	EPSILON;			/* Optimality gap */
 
 	int 	TAU;				/* Number of iterations after which incumbent cut is reevaluated */
-	int		CUT_MULT;			/* Determines the number of cuts to be used for approximate */
+	int		CUT_MULT;			/* Determines the number of cuts to be used in the approximation */
 
+	/* The following concern the proximal parameter */
 	double	MIN_QUAD_SCALAR;	/* Minimum value for regularizing parameter */
 	double 	MAX_QUAD_SCALAR;	/* Maximum value for regularizing parameter */
 	double  R1;
@@ -58,7 +68,6 @@ typedef struct{
 	double  EVAL_ERROR;
 
 	int		SAA; 				/* Use SAA when continuous distribution in stoch file (1), or not (0) */
-	int		SAMPLING_TYPE;		/* Sampling type 0 (full), 1 (SAA), and 2 (Sequential sampling) */
 	int		MAX_OBS;			/* Maximum number of iterations before which SAA is invoked */
 
 	int		DRO_TYPE;
@@ -249,6 +258,7 @@ int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector 
 int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag);
 oneProblem *newDistSepProb(dVector stocMean, omegaType *omega);
 oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega);
+oneProblem *newDistSepProb_W();
 int cleanDistSepProb(oneProblem *sep, dVector stocMean, omegaType *omega, int numMoments);
 
 /* evalution.c */
