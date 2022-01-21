@@ -93,47 +93,31 @@ oneProblem *newMaster(oneProblem *orig, double lb) {
 	master->cstorsz = orig->cstorsz + NAMESIZE;    		/* memory size for storing column names */
 
 	/* Allocate memory to the information whose type is cString */
-	if (!(master->name = (cString) arr_alloc(NAMESIZE, char)))
-		errMsg("Allocation", "new_master", "Fail to allocate memory to master->name",0);
-	if (!(master->senx = (cString) arr_alloc(master->marsz,char)))
-		errMsg("Allocation", "new_master", "Fail to allocate memory to master->senx",0);
-	if (!(master->ctype = (cString) arr_alloc(master->macsz,char)))
-		errMsg("Allocation", "new_master", "Fail to allocate memory to master->ctype",0);
-	if (!(master->objname = (cString) arr_alloc(NAMESIZE,char)))
-		errMsg("Allocation", "new_master", "Fail to allocate memory to master->objname",0);
-	if (!(master->cname = (cString*) arr_alloc(master->macsz,cString)))
-		errMsg("Allocation", "new_master", "Fail to allocate memory to master->cname",0);
-	if (!(master->cstore = (cString) arr_alloc(master->cstorsz, char)))
-		errMsg("Allocation", "new_master", "Fail to allocate memory to master->cstore",0);
+	master->name = (cString) arr_alloc(NAMESIZE, char);
+	master->senx = (cString) arr_alloc(master->marsz,char);
+	master->ctype = (cString) arr_alloc(master->macsz,char);
+	master->objname = (cString) arr_alloc(NAMESIZE,char);
+	master->cname = (cString*) arr_alloc(master->macsz,cString);
+	master->cstore = (cString) arr_alloc(master->cstorsz, char);
 	if ( master->mar > 0 ) {
-		if (!(master->rname = (cString *) arr_alloc(master->marsz,cString)))
-			errMsg("Allocation", "new_master", "Fail to allocate memory to master->rname",0);
-		if (!(master->rstore = (cString) arr_alloc(master->rstorsz, char)))
-			errMsg("Allocation", "new_master", "Fail to allocate memory to master->rstore",0);
+		master->rname = (cString *) arr_alloc(master->marsz,cString);
+		master->rstore = (cString) arr_alloc(master->rstorsz, char);
 	}
 	else {
 		master->rname = NULL; master->rstore = NULL;
 	}
 
 	/* Allocate memory to the information whose type is dVector */
-	if (!(master->objx = (dVector) arr_alloc(master->macsz, double)))
-		errMsg("Allocation", "new_master", "Fail to allocate memory to master->objx",0);
-	if (!(master->rhsx = (dVector) arr_alloc(master->marsz, double)))
-		errMsg("Allocation", "new_master", "Fail to allocate memory to master->rhsx",0);
-	if (!(master->matval = (dVector) arr_alloc(master->matsz, double)))
-		errMsg("allocation", "new_master", "master->matval",0);
-	if (!(master->bdl = (dVector) arr_alloc(master->macsz, double)))
-		errMsg("allocation", "new_master", "master->bdl",0);
-	if (!(master->bdu = (dVector) arr_alloc(master->macsz, double)))
-		errMsg("allocation", "new_master", "master->bdu",0);
+	master->objx = (dVector) arr_alloc(master->macsz, double);
+	master->rhsx = (dVector) arr_alloc(master->marsz, double);
+	master->matval = (dVector) arr_alloc(master->matsz, double);
+	master->bdl = (dVector) arr_alloc(master->macsz, double);
+	master->bdu = (dVector) arr_alloc(master->macsz, double);
 
 	/* Allocate memory to the information whose type is iVector */
-	if (!(master->matbeg = (iVector) arr_alloc(master->macsz, int)))
-		errMsg("allocation", "new_master", "master->matbeg",0);
-	if (!(master->matcnt = (iVector) arr_alloc(master->macsz, int)))
-		errMsg("allocation", "new_master", "master->matcnt",0);
-	if (!(master->matind = (iVector) arr_alloc(master->matsz, int)))
-		errMsg("allocation", "new_master", "master->matind",0);
+	master->matbeg = (iVector) arr_alloc(master->macsz, int);
+	master->matcnt = (iVector) arr_alloc(master->macsz, int);
+	master->matind = (iVector) arr_alloc(master->matsz, int);
 
 	strcpy(master->name, orig->name);           /* Copy problem name */
 	strcpy(master->objname, orig->objname);     /* Copy objective name */
@@ -154,38 +138,26 @@ oneProblem *newMaster(oneProblem *orig, double lb) {
 	/* Copy all the column information from the original master problem */
 	cnt = 0;
 	for (j = 0; j < orig->mac; j++) {
-		/* Copy objective function coefficients */
-		master->objx[j] = orig->objx[j];
-		/* Copy the decision variable type */
-		master->ctype[j] = orig->ctype[j];
-		/* Copy the upper bound and lower bound */
-		master->bdu[j] = orig->bdu[j];
+		master->objx[j] = orig->objx[j];		/* Copy objective function coefficients */
+		master->ctype[j] = orig->ctype[j];		/* Copy the decision variable type */
+		master->bdu[j] = orig->bdu[j];			/* Copy the upper bound and lower bound */
 		master->bdl[j] = orig->bdl[j];
-		/* Copy column names, offset by length */
-		master->cname[j] = orig->cname[j] + colOffset;
-		/* Copy the master sparse matrix beginning position of each column */
-		master->matbeg[j] = cnt;
-		/* Copy the sparse matrix non-zero element count */
-		master->matcnt[j] = orig->matcnt[j];
-		master->ctype[j] = orig->ctype[j];
-		/* Loop through all non-zero elements in this column */
+		master->cname[j] = orig->cname[j] + colOffset;	/* Copy column names, offset by length */
+		master->matbeg[j] = cnt;				/* Copy the master sparse matrix beginning position of each column */
+		master->matcnt[j] = orig->matcnt[j];	/* Copy the sparse matrix non-zero element count */
+		master->ctype[j] = orig->ctype[j];		/* Loop through all non-zero elements in this column */
 		for (idx = orig->matbeg[j]; idx < orig->matbeg[j] + orig->matcnt[j]; idx++) {
-			/* Copy the non-zero coefficient */
-			master->matval[cnt] = orig->matval[idx];
-			/* Copy the row entry of the non-zero elements */
-			master->matind[cnt] = orig->matind[idx];
+			master->matval[cnt] = orig->matval[idx];	/* Copy the non-zero coefficient */
+			master->matind[cnt] = orig->matind[idx];	/* Copy the row entry of the non-zero elements */
 			cnt++;
 		}
 	}
 
 	/* Copy all information concerning rows of master */
 	for (r = 0; r < orig->mar; r++) {
-		/* Copy the right hand side value */
-		master->rhsx[r] = orig->rhsx[r];
-		/* Copy the constraint sense */
-		master->senx[r] = orig->senx[r];
-		/* Copy row names, offset by length */
-		master->rname[r] = orig->rname[r] + rowOffset;
+		master->rhsx[r] = orig->rhsx[r]; 	/* Copy the right hand side value */
+		master->senx[r] = orig->senx[r];	/* Copy the constraint sense */
+		master->rname[r] = orig->rname[r] + rowOffset; /* Copy row names, offset by length */
 	}
 
 	/* Initialize information for the extra column in the new master. */
@@ -214,7 +186,6 @@ oneProblem *newMaster(oneProblem *orig, double lb) {
 #endif
 
 	return master;
-
 }//END newMaster()
 
 int addCut2Master(cellType *cell, cutsType *cuts, oneCut *cut, int lenX, int obsID) {

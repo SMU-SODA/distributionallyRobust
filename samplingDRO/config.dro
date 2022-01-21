@@ -5,7 +5,7 @@ TOLERANCE    0.001
 MIN_ITER   1
 
 // Maximum number of iterations
-MAX_ITER   1000
+MAX_ITER   100
 
 // Master type: 0 for LP, 1 for MILP, 5 for QP and 7 for MIQP
 MASTER_TYPE 0
@@ -28,7 +28,7 @@ CUT_MULT  3
 
 // ******************** Replicated experiments ********************
 // Number of replications.
-MULTIPLE_REP 2
+MULTIPLE_REP 1
 
 // Run seeds
 RUN_SEED    8879657642464524
@@ -106,7 +106,7 @@ EVAL_SEED	4742397086462006
 
 // ***************************** Algorithm Choice *****************************
 // Set to (0) stochastic decomposition, (1) L-shaped, and (2) reformulation approach.
-ALGO_TYPE 1
+ALGO_TYPE 2
 
 // Number of observations to be used to set the sample average approximation
 MAX_OBS 250
@@ -117,6 +117,6 @@ DRO_TYPE 2
 
 // Parameters associated with the ambiguity set
 // Moment-based ambiguity set: Parameter 1 = number of moments and Parameter 2 = bounding error
-DRO_PARAM_1 1
-DRO_PARAM_2 0.05
+DRO_PARAM_1 -1
+DRO_PARAM_2 0.5
 

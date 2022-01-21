@@ -52,16 +52,18 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 		}
 
 		/* Setup the initial sample for omega structure */
-		if ( config.ALGO_TYPE != SD ) {
+		if ( config.ALGO_TYPE == L_SHAPED ) {
 			cell->omega->numObs = config.MAX_OBS;
 			setupSAA(stoc, NULL, &config.RUN_SEED[0], cell->omega->vals, cell->omega->probs, cell->omega->weights,
-					&cell->omega->cnt, cell->omega->numObs, config.TOLERANCE);
+					cell->omega->numObs, config.TOLERANCE);
 		}
 
-		/* Setup or clean the distribution separation problem */
-		if ( (cell->sep = newDistSepProb(prob[1]->mean, cell->omega)) == NULL) {
-			errMsg("algorithm", "algo", "failed to setup a new distribution separation problem", 0);
-			goto TERMINATE;
+		if ( config.ALGO_TYPE != REFORM ) {
+			/* Setup or clean the distribution separation problem */
+			if ( (cell->sep = newDistSepProb(prob[1]->mean, cell->omega, &cell->spIdx)) == NULL) {
+				errMsg("algorithm", "algo", "failed to setup a new distribution separation problem", 0);
+				goto TERMINATE;
+			}
 		}
 
 		tic = clock();
@@ -80,28 +82,36 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 			}
 			break;
 		case REFORM:
+			if ( solveReformulation(stoc, prob, &cell) ) {
+				errMsg("algorithm", "algo", "failed to solve a reformulated problem", 0);
+				goto TERMINATE;
+			}
 			break;
 		default:
 			errMsg("algorithm", "algo", "unknown algorithm type", 0);
 			break;
 		}
-		cell->time->repTime = ((double) (clock() - tic))/CLOCKS_PER_SEC;
+		if ( config.ALGO_TYPE != REFORM ) {
+			cell->time->repTime = ((double) (clock() - tic))/CLOCKS_PER_SEC;
 
-		/* Write solution statistics for optimization process */
-		printOptimizationSummary(cell);
-		writeOptimizationStatistics(detailedResults, incumbFile, prob, cell, rep);
 
-		/* Evaluating the optimal solution*/
-		if (config.EVAL_FLAG == 1) {
-			dVector evalX = (config.MASTER_TYPE == PROB_QP || config.ALGO_TYPE == SD) ? cell->incumbX : cell->candidX;
-			evaluate(detailedResults, stoc, prob, cell, evalX);
+			/* Write solution statistics for optimization process */
+			printOptimizationSummary(cell);
+			writeOptimizationStatistics(detailedResults, incumbFile, prob, cell, rep);
+
+			/* Evaluating the optimal solution*/
+			if (config.EVAL_FLAG == 1) {
+				dVector evalX = (config.MASTER_TYPE == PROB_QP || config.ALGO_TYPE == SD) ? cell->incumbX : cell->candidX;
+				evaluate(detailedResults, stoc, prob, cell, evalX);
+			}
+			else
+				fprintf(detailedResults,"\n");
+
+			/* Free the distribution separation problem */
+			if (cell->sep) freeOneProblem(cell->sep);
+			if (cell->spIdx) mem_free(cell->spIdx);
+			cell->sep = NULL; cell->spIdx = NULL;
 		}
-		else
-			fprintf(detailedResults,"\n");
-
-		/* Free the distribution separation problem */
-		if (cell->sep) freeOneProblem(cell->sep);
-		cell->sep = NULL;
 	}
 	printf("\n\nSuccessfully completed executing the algorithm.\n");
 

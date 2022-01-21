@@ -20,8 +20,8 @@
 #define DEBUG
 #if defined(DEBUG)
 #undef SETUP_CHECK
-#define SEP_CHECK
-#undef ALGO_CHECK
+#undef SEP_CHECK
+#define ALGO_CHECK
 #undef STOCH_CHECK
 #undef CUT_CHECK
 #undef EVAL_CHECK
@@ -150,6 +150,7 @@ typedef struct {
 	oneProblem 	*subprob;			/* store subproblem information */
 
 	oneProblem  *sep;				/* distribution separation problem */
+	iVector     spIdx;
 
 	dVector     candidX;            /* primal solution of the master problem */
 	double      candidEst;          /* objective value master problem */
@@ -188,6 +189,7 @@ void printOptimizationSummary(cellType *cell);
 int readConfig();
 int setupAlgo(oneProblem *orig, stocType *stoc, timeType *tim, probType ***prob, cellType **cell, dVector *meanSol);
 cellType *newCell(stocType *stoc, probType **prob, dVector xk);
+cellType *createEmptyCell();
 int cleanCellType(cellType *cell, probType *prob, dVector xk);
 void freeCellType(cellType *cell);
 
@@ -254,11 +256,13 @@ omegaType *newOmega(stocType *stoc, int maxObs, int numStats);
 void freeOmegaType(omegaType *omega, bool partial);
 
 /* separation.c */
-int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag);
-int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag);
-oneProblem *newDistSepProb(dVector stocMean, omegaType *omega);
-oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega);
-oneProblem *newDistSepProb_W();
+int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag);
+int updtDistSepProb(oneProblem *sep, omegaType *omega, dVector stocMean, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag);
+int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag);
+int updtDistSepProb_W(oneProblem *sep, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag);
+oneProblem *newDistSepProb(dVector stocMean, omegaType *omega, iVector *spIdx);
+oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, iVector *spIdx);
+oneProblem *newDistSepProb_W(omegaType *omega, iVector *spIdx);
 int cleanDistSepProb(oneProblem *sep, dVector stocMean, omegaType *omega, int numMoments);
 
 /* evalution.c */

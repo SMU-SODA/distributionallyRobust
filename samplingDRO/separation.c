@@ -17,12 +17,12 @@ extern configType config;
 extern cString outputDir;
 #endif
 
-int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag) {
+int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag) {
 	int status;
 	dVector tempProbs;
 
 	/* Update the distribution separation problem */
-	if ( updtDistSepProb_MM(sep, stocMean, omega, spObj, obsStar, newOmegaFlag) ) {
+	if ( updtDistSepProb(sep, omega, stocMean, spObj, spIdx, obsStar, newOmegaFlag) ) {
 		errMsg("separation", "updtDistSepProb_MM", "failed to update the distribution separation problem", 0);
 		return 1;
 	}
@@ -30,23 +30,23 @@ int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector 
 	/* Solve the distribution separation problem */
 	if ( solveProblem(sep->lp, sep->name, sep->type, &status) ) {
 		if ( status == STAT_INFEASIBLE ) {
-			printf("Distribution separation problem is infeasible.\n");
+			errMsg("algorithm", "obtainProbDist", "distribution separation problem is infeasible", 0);
 			return 1;
 		}
 		else {
-			errMsg("algorithm", "obtainProbDist", "failed to solve subproblem in solver", 0);
+			errMsg("algorithm", "obtainProbDist", "failed to solve the distribution separation problem in solver", 0);
 			return 1;
 		}
 	}
 
 	/* Obtain the extremal probability distribution */
-	tempProbs = (dVector) arr_alloc(omega->cnt + 1, double);
-	if ( getPrimal(sep->lp, tempProbs, omega->cnt) ) {
+	tempProbs = (dVector) arr_alloc(sep->mac + 1, double);
+	if ( getPrimal(sep->lp, tempProbs, sep->mac) ) {
 		errMsg("algorithm", "obtainProbDist", "failed to obtain the primal solution for master", 0);
 		return 1;
 	}
 	for ( int obs = 0; obs < omega->cnt; obs++ ) {
-		omega->probs[obs] = tempProbs[obs+1];
+		omega->probs[obs] = tempProbs[spIdx[obs]+1];
 	}
 	mem_free(tempProbs);
 
@@ -60,12 +60,38 @@ int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector 
 	return 0;
 }//END obtainProbDist();
 
-int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, int obsStar, bool newOmegaFlag) {
-	iVector indices;
-	dVector rhsx;
+int updtDistSepProb(oneProblem *sep, omegaType *omega, dVector stocMean, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag) {
+
+	if ( config.ALGO_TYPE == SD ) {
+		/* For SD, invoke the appropriate subroutine to update the distribution separation problem */
+		if ( config.DRO_TYPE == MOMENT_MATCHING ) {
+
+		}
+		else if ( config.DRO_TYPE == WASSERSTEIN ) {
+			if ( updtDistSepProb_W(sep, omega, spObj, spIdx, obsStar, newOmegaFlag) ) {
+				errMsg("algorithm", "updtDistSepProb", "failed to update the Wasserstein disttribution separation problem", 0);
+				return 1;
+			}
+		}
+	}
+
+	/* Update the objective function coefficients. */
+	if ( changeObjx(sep->lp, omega->cnt, spIdx, spObj) ) {
+		errMsg("solver", "updtDistSepProb", "failed to change the cost coefficients in the solver", 0);
+		return 1;
+	}
+
+#if defined( SEP_CHECK )
+	writeProblem(sep->lp, "cellSepProb.lp");
+#endif
+
+	return 0;
+}//END updtDistSepProb()
+
+int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag) {
 	int idx, numMoments = config.DRO_PARAM_1;
 
-	if ( config.ALGO_TYPE == SD && newOmegaFlag ) {
+	if ( newOmegaFlag ) {
 		/* Add a new column to the distribution separation problem corresponding to the latest observation */
 		iVector cmatind;
 		dVector cmatval;
@@ -89,55 +115,151 @@ int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVec
 		cmatind[idx] = idx;
 		cmatval[idx] = 1.0;
 
+		/* Add the column to the problem on the solver */
 		if ( addCol(sep->lp, nzcnt, 1.0, matbeg, cmatind, cmatval, bdu, bdl, colname) ) {
 			errMsg("solver", "updtDistSepProb", "failed to add a new column for latest observation", 0);
 			return 1;
 		}
+		sep->macsz = ++sep->mac;
 
 		mem_free(cmatind); mem_free(cmatval);
-
-		/* Update the right-hand side with sample mean information */
-		indices = (iVector) arr_alloc(2*numMoments*omega->numOmega, int);
-		rhsx    = (dVector) arr_alloc(2*numMoments*omega->numOmega+1, double);
-		idx = 0;
-		for ( int rv = 1; rv <= omega->numOmega; rv++ ) {
-			for  ( int m = 0; m < numMoments; m++ ) {
-				indices[idx] = idx;
-				rhsx[idx++] = omega->sampleStats[m][rv]*(1 + config.DRO_PARAM_2);
-				indices[idx] = idx;
-				rhsx[idx++] = -omega->sampleStats[m][rv]*(1 - config.DRO_PARAM_2);
-			}
-		}
-
-		if ( changeRHS(sep->lp, idx, indices, rhsx) ) {
-			errMsg("solver", "updtDistSepProb", "failed to change the cost coefficients in the solver", 0);
-			return 1;
-		}
-
-		mem_free(indices);
-		mem_free(rhsx);
 	}
 
-	writeProblem(sep->lp, "cellSepProb.lp");
-
-	/* Update the objective coefficients with the recourse function estimates */
-	indices = (iVector) arr_alloc(omega->cnt, int);
-	for ( int n = 0; n < omega->cnt; n++ ) {
-		indices[n] = n;
+	iVector indices;
+	dVector rhsx;
+	/* Update the right-hand side with sample mean information */
+	indices = (iVector) arr_alloc(2*numMoments*omega->numOmega, int);
+	rhsx    = (dVector) arr_alloc(2*numMoments*omega->numOmega+1, double);
+	idx = 0;
+	for ( int rv = 1; rv <= omega->numOmega; rv++ ) {
+		for  ( int m = 0; m < numMoments; m++ ) {
+			indices[idx] = idx;
+			rhsx[idx++] = omega->sampleStats[m][rv]*(1 + config.DRO_PARAM_2);
+			indices[idx] = idx;
+			rhsx[idx++] = -omega->sampleStats[m][rv]*(1 - config.DRO_PARAM_2);
+		}
 	}
 
-	if ( changeObjx(sep->lp, omega->cnt, indices, spObj) ) {
+	/* Change the right-hand side of the moment constraints with sample statistics. */
+	if ( changeRHS(sep->lp, idx, indices, rhsx) ) {
 		errMsg("solver", "updtDistSepProb", "failed to change the cost coefficients in the solver", 0);
 		return 1;
 	}
 
-#if defined( SEP_CHECK )
-	writeProblem(sep->lp, "cellSepProb.lp");
-#endif
+	mem_free(indices); mem_free(rhsx);
 
-	mem_free(indices);
 	return 0;
 }//END updtDistSepProb()
+
+int updtDistSepProb_W(oneProblem *sep, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag) {
+
+	if ( newOmegaFlag ) {
+		/* Add a new column to the distribution separation problem corresponding to the latest observation */
+		iVector cmatind;
+		dVector cmatval;
+		char tempName[NAMESIZE];
+		int nzcnt = 3, matbeg = 0;
+		double bdl = 0.0, bdu;
+
+		cmatind = (iVector) arr_alloc(nzcnt, int);
+		cmatval = (dVector) arr_alloc(nzcnt, double);
+
+		/* Add constraints corresponding to the latest observation. */
+		sprintf(tempName,"rowSum[%d]", 0);
+		if ( addRow(sep->lp, 0, 0.0, 'E', 0, NULL, NULL, tempName) ) {
+			errMsg("solver", "updtDistSepProb", "failed to add a new row for latest observation", 0);
+			return 1;
+		}
+
+		sprintf(tempName,"colSum[%d]", 0);
+		if ( addRow(sep->lp, 0, 0.0, 'E', 0, NULL, NULL, tempName) ) {
+			errMsg("solver", "updtDistSepProb", "failed to add a new row for latest observation", 0);
+			return 1;
+		}
+		sep->mar += 2;
+
+		/* probability variables */
+		sprintf(tempName, "prob[%d]", obsStar);
+		bdu = 1.0;
+		cmatind[0] = 0;		cmatind[1] = 2 + 2*(omega->cnt-1);
+		cmatval[0] = 1.0;	cmatval[1] = -1.0;
+		if ( addCol(sep->lp, 2, 1.0, matbeg, cmatind, cmatval, bdu, bdl, tempName) ) {
+			errMsg("solver", "updtDistSepProb", "failed to add a new column for latest observation", 0);
+			return 1;
+		}
+		spIdx[obsStar] = sep->mac;
+
+		/* add the diagonal joint probability variables */
+		sprintf(tempName, "eta[%d][%d]", obsStar, obsStar);
+		bdu = INFINITY;
+		cmatind[0] = 2 + 2*obsStar;	cmatval[0] = 1.0;
+		cmatind[1] = 3 + 2*obsStar;	cmatval[1] = 1.0;
+		if ( addCol(sep->lp, 2, 0.0, matbeg, cmatind, cmatval, bdu, bdl, tempName) ) {
+			errMsg("solver", "updtDistSepProb", "failed to add a new column for latest observation", 0);
+			return 1;
+		}
+		sep->mac += 2;
+
+		/* joint probability variables */
+		for ( int n = 0; n < omega->cnt-1; n++ ) {
+			sprintf(tempName, "eta[%d][%d]", n, obsStar);
+			bdu = INFINITY;
+			cmatind[0] = 1;
+			if ( config.DRO_PARAM_1 < 0 )
+				cmatval[0] = infNorm(omega->vals[obsStar]-1, omega->vals[n]-1, omega->numOmega);
+			else
+				cmatval[0] = pNorm(omega->vals[obsStar]-1, omega->vals[n]-1, omega->numOmega, config.DRO_PARAM_1);
+			cmatind[1] = 2 + 2*n;					cmatval[1] = 1.0;
+			cmatind[2] = 3 + 2*(omega->cnt - 1);	cmatval[2] = 1.0;
+
+			/* Add the column to the problem on the solver */
+			if ( addCol(sep->lp, 3, 0.0, matbeg, cmatind, cmatval, bdu, bdl, tempName) ) {
+				errMsg("solver", "updtDistSepProb", "failed to add a new column for latest observation", 0);
+				return 1;
+			}
+
+			sprintf(tempName, "eta[%d][%d]", obsStar, n);
+			bdu = INFINITY;
+			cmatind[0] = 1;
+			if ( config.DRO_PARAM_1 < 0 )
+				cmatval[0] = infNorm(omega->vals[obsStar]-1, omega->vals[n]-1, omega->numOmega);
+			else
+				cmatval[0] = pNorm(omega->vals[obsStar]-1, omega->vals[n]-1, omega->numOmega, config.DRO_PARAM_1);
+			cmatind[1] = 3 + 2*n;					cmatval[1] = 1.0;
+			cmatind[2] = 2 + 2*(omega->cnt - 1); 	cmatval[2] = 1.0;
+
+			/* Add the column to the problem on the solver */
+			if ( addCol(sep->lp, 3, 0.0, matbeg, cmatind, cmatval, bdu, bdl, tempName) ) {
+				errMsg("solver", "updtDistSepProb", "failed to add a new column for latest observation", 0);
+				return 1;
+			}
+			sep->mac += 2;
+		}
+
+		mem_free(cmatind); mem_free(cmatval);
+	}
+
+	/* Change the right-hand sides of column sum constraints with statistics. */
+	iVector indices;
+	dVector rhsx;
+	/* Update the right-hand side with sample mean information */
+	indices = (iVector) arr_alloc(omega->cnt, int);
+	rhsx    = (dVector) arr_alloc(omega->cnt+1, double);
+	for ( int n = 0; n < omega->cnt; n++ ) {
+		indices[n] = 3 + 2*n;
+		rhsx[n]    = (double) omega->weights[n]/ (double) omega->numObs;
+	}
+
+	/* Change the right-hand side of the moment constraints with sample statistics. */
+	if ( changeRHS(sep->lp, omega->cnt, indices, rhsx) ) {
+		errMsg("solver", "updtDistSepProb", "failed to change the cost coefficients in the solver", 0);
+		return 1;
+	}
+
+	mem_free(indices); mem_free(rhsx);
+
+	return 0;
+}//END updtDistSepProb_W()
 
 /* Setup a new distribution separation problem. Currently there are two types of ambiguity sets supported by this implementation.
  *
@@ -148,7 +270,7 @@ int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVec
  * distribution separation problem gets updated during the course of the algorithm and/or replications. In this sense, only the
  * LP pointer is useful for most purposes.
  */
-oneProblem *newDistSepProb(dVector stocMean, omegaType *omega) {
+oneProblem *newDistSepProb(dVector stocMean, omegaType *omega, iVector *spIdx) {
 	oneProblem *dist = NULL;
 
 	if ( config.DRO_TYPE == RISK_NEUTRAL ) {
@@ -158,14 +280,15 @@ oneProblem *newDistSepProb(dVector stocMean, omegaType *omega) {
 		/* Obtain the necessary statistics for creating a distribution separation problem */
 		refineOmega(omega, stocMean);
 
-		dist = newDistSepProb_MM(stocMean, omega);
+		dist = newDistSepProb_MM(stocMean, omega, spIdx);
 		if ( dist == NULL ) {
 			errMsg("solve", "newDistSepProb", "unknown distribution type requested in DRO_TYPE", 0);
 			return NULL;
 		}
 	}
 	else if ( config.DRO_TYPE == WASSERSTEIN ) {
-		dist = newDistSepProb_W(omega);
+
+		dist = newDistSepProb_W(omega, spIdx);
 		if ( dist == NULL ) {
 			errMsg("solve", "newDistSepProb", "unknown distribution type requested in DRO_TYPE", 0);
 			return NULL;
@@ -176,24 +299,33 @@ oneProblem *newDistSepProb(dVector stocMean, omegaType *omega) {
 		return NULL;
 	}
 
+#if defined(SEP_CHECK)
+	if ( writeProblem(dist->lp, "newDistSep.lp") ) {
+		errMsg("solver", "newDistSepProb_MM", "failed to write distribution separation problem to file", 0);
+		return NULL;
+	}
+#endif
+
 	return dist;
 }//END newDistSeparation()
 
 /* This subroutine is used to setup a distribution separation problem with moment-based ambiguity set. */
-oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega) {
+oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, iVector *spIdx) {
 	oneProblem *dist;
 	char tempName[NAMESIZE];
 	int offset, numMoments = config.DRO_PARAM_1;
 
-	if (!(dist = (oneProblem *) mem_malloc (sizeof(oneProblem))))
-		errMsg("Memory allocation", "newDistSepProb_MM", "failed to allocate memory to distSepProb", 0);
+	dist = (oneProblem *) mem_malloc (sizeof(oneProblem));
+	(*spIdx) = (iVector) arr_alloc(config.MAX_ITER, int);
+	for ( int n = 0; n < omega->cnt; n++ )
+		(*spIdx)[n] = n;
 
 	/* Initialize essential elements */
 	dist->type   = PROB_LP;
-	dist->objsen = -1;                 				/* sense of the objective: 1 for minimization and -1 for maximization */
+	dist->objsen = -1;                 					/* sense of the objective: 1 for minimization and -1 for maximization */
 	dist->mar 	 = 2*numMoments*omega->numOmega + 1;  	/* number of rows is equal to number of moments times number of random variables plus one */
-	dist->mac    = omega->cnt;						/* number of columns is equal to the number of observations */
-	dist->numInt = 0;                 				/* number of integer variables in the problem  */
+	dist->mac    = omega->cnt;							/* number of columns is equal to the number of observations */
+	dist->numInt = 0;                 					/* number of integer variables in the problem  */
 
 	dist->marsz   = dist->mar;
 	dist->macsz   = dist->mac;
@@ -290,17 +422,10 @@ oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega) {
 		return NULL;
 	}
 
-#if defined(SEP_CHECK)
-	if ( writeProblem(dist->lp, "newDistSep.lp") ) {
-		errMsg("solver", "newDistSepProb_MM", "failed to write distribution separation problem to file", 0);
-		return NULL;
-	}
-#endif
-
 	return dist;
 }//END newDistProb()
 
-oneProblem *newDistSepProb_W(omegaType *omega) {
+oneProblem *newDistSepProb_W(omegaType *omega, iVector *spIdx) {
 	oneProblem *dist = NULL;
 	char tempName[NAMESIZE];
 	double **distMatrix;
@@ -310,12 +435,18 @@ oneProblem *newDistSepProb_W(omegaType *omega) {
 	for ( int i = 0; i < omega->cnt; i++ ) {
 		distMatrix[i] = (double *) arr_alloc(omega->cnt, double);
 		for (int j = i+1; j < omega->cnt; j++ ) {
-			distMatrix[i][j] = pNorm(omega->vals[i], omega->vals[j], omega->numOmega, config.DRO_PARAM_1);
+			if ( config.DRO_PARAM_1 < 0 )
+				distMatrix[i][j] = infNorm(omega->vals[i]-1, omega->vals[j]-1, omega->numOmega);
+			else
+				distMatrix[i][j] = pNorm(omega->vals[i]-1, omega->vals[j]-1, omega->numOmega, config.DRO_PARAM_1);
 		}
 	}
 
 	/* Allocate memory */
 	dist = (oneProblem *) mem_malloc (sizeof(oneProblem));
+	(*spIdx) = (iVector) arr_alloc(config.MAX_ITER, int);
+	for ( int n = 0; n < omega->cnt; n++ )
+		(*spIdx)[n] = n;
 
 	/* Initialize essential elements */
 	dist->type   = PROB_LP;
@@ -382,28 +513,26 @@ oneProblem *newDistSepProb_W(omegaType *omega) {
 	/* b. joint probability variables (eta) */
 	for ( int i = 0; i < omega->cnt; i++ ) {
 		for ( int j = 0; j < omega->cnt; j++ ) {
-			if ( i != j ) {
-				sprintf(tempName,"eta[%d][%d]", i, j);
-				strcpy(dist->cstore + offset, tempName);
-				dist->cname[colID]  = dist->cstore + offset;
-				offset += strlen(tempName) + 1;
-				dist->objx[colID]   = 0.0;
-				dist->ctype[colID]  = 'C';
-				dist->bdu[colID]    = INFINITY;
-				dist->bdl[colID]    = 0.0;
-				dist->matbeg[colID] = dist->numnz;
+			sprintf(tempName,"eta[%d][%d]", i, j);
+			strcpy(dist->cstore + offset, tempName);
+			dist->cname[colID]  = dist->cstore + offset;
+			offset += strlen(tempName) + 1;
+			dist->objx[colID]   = 0.0;
+			dist->ctype[colID]  = 'C';
+			dist->bdu[colID]    = INFINITY;
+			dist->bdl[colID]    = 0.0;
+			dist->matbeg[colID] = dist->numnz;
 
-				dist->matind[dist->numnz]   = i+1;
-				dist->matval[dist->numnz++] = 1.0;
+			dist->matind[dist->numnz]   = i+1;
+			dist->matval[dist->numnz++] = 1.0;
 
-				dist->matind[dist->numnz]   = omega->cnt+j+1;
-				dist->matval[dist->numnz++] = 1.0;
+			dist->matind[dist->numnz]   = omega->cnt+j+1;
+			dist->matval[dist->numnz++] = 1.0;
 
-				dist->matind[dist->numnz]   = 2*omega->cnt+1;
-				dist->matval[dist->numnz++] = distMatrix[i][j];
+			dist->matind[dist->numnz]   = 2*omega->cnt+1;
+			dist->matval[dist->numnz++] = distMatrix[i][j];
 
-				dist->matcnt[colID++] += 3;
-			}
+			dist->matcnt[colID++] += 3;
 		}
 	}
 
@@ -444,6 +573,8 @@ oneProblem *newDistSepProb_W(omegaType *omega) {
 	dist->rhsx[rowID]  = config.DRO_PARAM_2;
 	dist->senx[rowID++] = 'L';
 
+	dist->mar = rowID; dist->mac = colID;
+
 	/* Load the copy into CPLEX dist->mac, dist->mar,*/
 	dist->lp = setupProblem(dist->name, dist->type, colID, rowID, dist->objsen, dist->objx, dist->rhsx, dist->senx,
 			dist->matbeg, dist->matcnt,dist->matind, dist->matval, dist->bdl, dist->bdu, NULL, dist->cname, dist->rname,
@@ -452,13 +583,6 @@ oneProblem *newDistSepProb_W(omegaType *omega) {
 		errMsg("Problem Setup", "newDistSepProb_MM", "failed to setup master problem in the solver",0);
 		return NULL;
 	}
-
-#if defined(SEP_CHECK)
-	if ( writeProblem(dist->lp, "newDistSep.lp") ) {
-		errMsg("solver", "newDistSepProb_MM", "failed to write distribution separation problem to file", 0);
-		return NULL;
-	}
-#endif
 
 	if ( distMatrix ) {
 		for ( int i = 0; i < omega->cnt; i++ ) {

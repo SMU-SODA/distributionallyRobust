@@ -174,16 +174,9 @@ int setupAlgo(oneProblem *orig, stocType *stoc, timeType *tim, probType ***prob,
 
 /* This function is used to create cells used in the algorithm */
 cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
-	cellType    *cell;
+	cellType *cell;
 
-	/* Allocate memory to all cells used in the algorithm. */
-	if (!(cell = (cellType *) mem_malloc(sizeof(cellType))) )
-		errMsg("Memory allocation", "new_cell", "failed to allocate memory to cell",0);
-	cell->master = cell->subprob = NULL;
-	cell->cuts = NULL;
-	cell->omega = NULL; cell->piM = NULL;
-
-	cell->candidX = cell->incumbX = NULL;
+	cell = createEmptyCell();
 
 	/* setup the master problem */
 	cell->master = newMaster(prob[0]->sp, prob[0]->lb);
@@ -194,13 +187,6 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 
 	/* setup the subproblem */
 	cell->subprob = newSubproblem(prob[1]->sp);
-
-	/* Setup the distribution separation problem */
-	cell->sep = NULL;
-
-	/* -+-+-+-+-+-+-+-+-+-+-+ Allocating memory to other variables that belongs to cell +-+-+-+-+-+-+-+-+-+- */
-	cell->k 	= 0;
-	cell->LPcnt = 0;
 
 	/* candidate solution and estimates */
 	cell->candidX 	= duplicVector(xk, prob[0]->num->cols+1);
@@ -230,20 +216,16 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 			cell->maxCuts = config.MAX_ITER + config.MAX_ITER / config.TAU + 1;
 		}
 
-		if ( !(cell->piM = (dVector) arr_alloc(prob[0]->num->rows + cell->maxCuts + 1, double)) )
-			errMsg("allocation", "newMaster", "cell->piM", 0);
+		cell->piM = (dVector) arr_alloc(prob[0]->num->rows + cell->maxCuts + 1, double);
 	}
 	else {
-		cell->incumbX   = NULL;
 		cell->quadScalar= 0.0;
 		cell->maxCuts = config.MAX_ITER;
-		cell->piM = NULL;
 	}
 
 	cell->cuts = newCuts(cell->maxCuts);
 
-	if ( !(cell->time = (runTime *) mem_malloc(sizeof(runTime)) ) )
-		errMsg("setup", "newCell", "cell->runTime", 0);
+	cell->time = (runTime *) mem_malloc(sizeof(runTime));
 	cell->time->repTime = 0.0;
 	cell->time->iterTime = cell->time->iterAccumTime = 0.0;
 	cell->time->masterIter = cell->time->masterAccumTime = 0.0;
@@ -262,22 +244,17 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 
 	/* stochastic elements */
 	int len;
-	if ( config.ALGO_TYPE ==  L_SHAPED || config.ALGO_TYPE == REFORM)
+	if ( config.ALGO_TYPE ==  L_SHAPED )
 		len = config.MAX_OBS;
 	else
 		len = config.MAX_ITER + config.MAX_ITER / config.TAU + 1;
 
-	cell->omega  = newOmega(stoc, len, config.DRO_PARAM_1);
+	cell->omega  = newOmega(stoc, len, config.DRO_TYPE == MOMENT_MATCHING? config.DRO_PARAM_1:0);
 	if ( config.ALGO_TYPE == SD ) {
 		/* Initialize all the elements which will be used to store dual information */
 		cell->lambda = newLambda(len);
 		cell->sigma  = newSigma(len);
 		cell->delta  = newDelta(len);
-	}
-	else {
-		cell->lambda = NULL;
-		cell->sigma  = NULL;
-		cell->delta  = NULL;
 	}
 
 #if defined(SETUP_CHECK)
@@ -289,6 +266,44 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 
 	return cell;
 }//END newCell()
+
+cellType *createEmptyCell() {
+	cellType *cell;
+
+	/* Allocate memory to all cells used in the algorithm. */
+	cell = (cellType *) mem_malloc(sizeof(cellType));
+	cell->time = (runTime *) mem_malloc(sizeof(runTime));
+	cell->master = cell->subprob = NULL;
+	cell->cuts = NULL;
+	cell->candidX = cell->incumbX = cell->piM = NULL ;
+	cell->omega = NULL;
+	cell->lambda = NULL;
+	cell->sigma = NULL;
+	cell->delta = NULL;
+
+	cell->sep = NULL;
+	cell->spIdx = NULL;
+
+	/* scalar values and flags*/
+	cell->k 	= 0;
+	cell->LPcnt = 0;
+	cell->maxCuts = 0;
+
+	cell->candidEst = 0.0;
+	cell->incumbEst = 0.0;
+
+	cell->optFlag 	 = false;
+	cell->spFeasFlag = true;
+	cell->infeasIncumb = false;
+	cell->incumbChg = false;
+
+	cell->iCutIdx   = -1;
+	cell->iCutUpdt  = 0;
+	cell->gamma		= 0.0;
+	cell->quadScalar = 0.0;
+
+	return cell;
+}//END createEmptyCell();
 
 int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 	int cnt;
@@ -372,6 +387,7 @@ void freeCellType(cellType *cell) {
 	if ( cell ) {
 		if (cell->master) freeOneProblem(cell->master);
 		if (cell->sep) freeOneProblem(cell->sep);
+		if (cell->spIdx) mem_free(cell->spIdx);
 		if (cell->candidX) mem_free(cell->candidX);
 		if (cell->incumbX) mem_free(cell->incumbX);
 		if (cell->cuts) freeCutsType(cell->cuts, false);

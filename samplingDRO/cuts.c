@@ -68,7 +68,7 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 
 	tic = clock();
 	/* 2. Solve the distribution separation problem if we are not solving the risk-neutral version. */
-	if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, false, 0) ) {
+	if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, cell->spIdx, false, 0) ) {
 		errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
 		goto TERMINATE;
 	}
@@ -190,9 +190,9 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 	}
 	else  {
 		clock_t tic = clock();
-		if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, obsStar, newOmegaFlag) ) {
+		if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, cell->spIdx, obsStar, newOmegaFlag) ) {
 			errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
-			return 1;
+			return -1;
 		}
 		cell->time->distSepTime += ((double) (clock() - tic))/CLOCKS_PER_SEC;
 	}

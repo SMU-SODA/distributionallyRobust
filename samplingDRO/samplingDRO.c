@@ -35,7 +35,7 @@ int main(int argc, char * argv[]) {
 		goto TERMINATE;
 	}
 
-	/* set up output directory: using the outputDir in config file and the input problem name */
+	/* set up output directory: using the outputDir in configuration file and the input problem name */
 	createOutputDir(outputDir, "samplingDRO", probName);
 
 	/* launch the algorithm */
