@@ -54,13 +54,16 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 		/* Setup the initial sample for omega structure */
 		if ( config.ALGO_TYPE == L_SHAPED ) {
 			cell->omega->numObs = config.MAX_OBS;
-			setupSAA(stoc, NULL, &config.RUN_SEED[0], cell->omega->vals, cell->omega->probs, cell->omega->weights,
-					cell->omega->numObs, config.TOLERANCE);
+			if ( setupSAA(stoc, NULL, &config.RUN_SEED, &cell->omega->vals, cell->omega->probs, cell->omega->weights,
+					&cell->omega->numObs, config.TOLERANCE) ) {
+				errMsg("algorithm", "algo", "failed to setup a SAA", 0);
+				goto TERMINATE;
+			}
 		}
 
 		if ( config.ALGO_TYPE != REFORM ) {
 			/* Setup or clean the distribution separation problem */
-			if ( (cell->sep = newDistSepProb(prob[1]->mean, cell->omega, &cell->spIdx)) == NULL) {
+			if ( (cell->sep = newDistSepProb(prob[1]->mean, cell->omega, cell->spIdx)) == NULL) {
 				errMsg("algorithm", "algo", "failed to setup a new distribution separation problem", 0);
 				goto TERMINATE;
 			}
@@ -91,27 +94,26 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 			errMsg("algorithm", "algo", "unknown algorithm type", 0);
 			break;
 		}
-		if ( config.ALGO_TYPE != REFORM ) {
-			cell->time->repTime = ((double) (clock() - tic))/CLOCKS_PER_SEC;
+
+		cell->time->repTime = ((double) (clock() - tic))/CLOCKS_PER_SEC;
 
 
-			/* Write solution statistics for optimization process */
-			printOptimizationSummary(cell);
-			writeOptimizationStatistics(detailedResults, incumbFile, prob, cell, rep);
+		/* Write solution statistics for optimization process */
+		printOptimizationSummary(cell);
+		writeOptimizationStatistics(detailedResults, incumbFile, prob, cell, rep);
 
-			/* Evaluating the optimal solution*/
-			if (config.EVAL_FLAG == 1) {
-				dVector evalX = (config.MASTER_TYPE == PROB_QP || config.ALGO_TYPE == SD) ? cell->incumbX : cell->candidX;
-				evaluate(detailedResults, stoc, prob, cell, evalX);
-			}
-			else
-				fprintf(detailedResults,"\n");
-
-			/* Free the distribution separation problem */
-			if (cell->sep) freeOneProblem(cell->sep);
-			if (cell->spIdx) mem_free(cell->spIdx);
-			cell->sep = NULL; cell->spIdx = NULL;
+		/* Evaluating the optimal solution*/
+		if (config.EVAL_FLAG == 1) {
+			dVector evalX = (config.MASTER_TYPE == PROB_QP || config.ALGO_TYPE == SD) ? cell->incumbX : cell->candidX;
+			evaluate(detailedResults, stoc, prob, cell, evalX);
 		}
+		else
+			fprintf(detailedResults,"\n");
+
+		/* Free the distribution separation problem */
+		if (cell->sep) freeOneProblem(cell->sep);
+		if (cell->spIdx) mem_free(cell->spIdx);
+		cell->sep = NULL; cell->spIdx = NULL;
 	}
 	printf("\n\nSuccessfully completed executing the algorithm.\n");
 
@@ -205,7 +207,7 @@ int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell) {
 		generateOmega(stoc, observ+1, config.TOLERANCE, &config.RUN_SEED[0], NULL);
 
 		/* (b) update omegaType with the latest observation. */
-		omegaIdx = calcOmega(observ, prob[1]->mean, cell->omega, &newOmegaFlag, config.TOLERANCE);
+		omegaIdx = calcOmega(observ, prob[1]->mean, cell->omega, &newOmegaFlag, cell->k, config.TOLERANCE);
 
 		/******* 3. Solve the subproblem with candidate solution, form the candidate cut *******/
 		if ( (candidCut = formStochasticCut(prob[1], cell, cell->candidX, omegaIdx, newOmegaFlag)) < 0 ) {
@@ -274,9 +276,9 @@ void printOptimizationSummary(cellType *cell) {
 
 	fprintf(stdout, "\n------------------------------------------------------------ Optimization ---------------------------------------------------------\n");
 	if ( config.MASTER_TYPE == PROB_QP )
-		fprintf(stdout, "Algorithm                          : Regularized Decomposition-based DRO \n");
+		fprintf(stdout, "Algorithm                      : Regularized Decomposition-based DRO \n");
 	else
-		fprintf(stdout, "Algorithm                          : Decomposition-based DRO \n");
+		fprintf(stdout, "Algorithm                      : Decomposition-based DRO \n");
 	fprintf(stdout, "Number of iterations               : %d", cell->k);
 	if ( cell->k == config.MAX_ITER)
 		fprintf(stdout, "*\n");

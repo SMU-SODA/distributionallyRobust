@@ -24,16 +24,16 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 
 	/* Allocate memory and initializations */
 	piS = (dVector) arr_alloc(prob->num->rows+1, double);
-	spObj = (dVector) arr_alloc(cell->omega->cnt, double);
-	alpha = (dVector) arr_alloc(cell->omega->cnt, double);
-	beta = (dVector *) arr_alloc(cell->omega->cnt, double);
+	spObj = (dVector) arr_alloc(cell->omega->numObs, double);
+	alpha = (dVector) arr_alloc(cell->omega->numObs, double);
+	beta = (dVector *) arr_alloc(cell->omega->numObs, double);
 
 	bOmega.cnt = prob->num->rvbOmCnt; bOmega.col = prob->coord->rvbOmRows;
 	COmega.cnt = prob->num->rvCOmCnt; COmega.col = prob->coord->rvCOmCols; COmega.row = prob->coord->rvCOmRows;
-	cut = newCut(prob->num->prevCols, cell->k, cell->omega->cnt);
+	cut = newCut(prob->num->prevCols, cell->k, cell->omega->numObs);
 
 	/* All the subproblems are solved in any iteration. */
-	for ( obs = 0; obs < cell->omega->cnt; obs++ ) {
+	for ( obs = 0; obs < cell->omega->numObs; obs++ ) {
 		/* 1a. Construct the subproblem with a given observation and master solution, solve the subproblem, and obtain dual information. */
 		if ( solveSubprob(prob, cell->subprob, Xvect, cell->omega->vals[obs], &cell->spFeasFlag, &cell->time->subprobIter, piS, &mubBar) ) {
 			errMsg("algorithm", "solveAgents", "failed to solve the subproblem", 0);
@@ -68,14 +68,14 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 
 	tic = clock();
 	/* 2. Solve the distribution separation problem if we are not solving the risk-neutral version. */
-	if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, cell->spIdx, false, 0) ) {
+	if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, cell->spIdx, false, 0, cell->k) ) {
 		errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
 		goto TERMINATE;
 	}
 	cell->time->distSepTime += ((double) (clock() - tic))/CLOCKS_PER_SEC;
 
 	/* 3. Compute the aggregated cut coefficients */
-	for ( obs = 0; obs < cell->omega->cnt; obs++ ) {
+	for ( obs = 0; obs < cell->omega->numObs; obs++ ) {
 		cut->alpha += cell->omega->probs[obs]*alpha[obs];
 		for (int c = 1; c <= prob->num->prevCols; c++)
 			cut->beta[c] += cell->omega->probs[obs]*beta[obs][c];
@@ -99,7 +99,7 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 	if ( spObj ) mem_free(spObj);
 	if ( alpha) mem_free(alpha);
 	if ( beta ) {
-		for ( obs = 0; obs < cell->omega->cnt; obs++ ) {
+		for ( obs = 0; obs < cell->omega->numObs; obs++ ) {
 			if (beta[obs]) mem_free(beta[obs]);
 		}
 		mem_free(beta);
@@ -110,7 +110,7 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 	if ( spObj ) mem_free(spObj);
 	if ( alpha) mem_free(alpha);
 	if ( beta ) {
-		for ( obs = 0; obs < cell->omega->cnt; obs++ ) {
+		for ( obs = 0; obs < cell->omega->numObs; obs++ ) {
 			if (beta[obs]) mem_free(beta[obs]);
 		}
 		mem_free(beta);
@@ -127,8 +127,8 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 
 	/* allocate memory to hold a subproblem duals, estimated objective function and the new cut */
 	piS = (dVector) arr_alloc(prob->num->rows+1, double);
-	spObj = (dVector) arr_alloc(cell->omega->cnt, double);
-	cut = newCut(prob->num->prevCols, cell->omega->cnt, cell->k);
+	spObj = (dVector) arr_alloc(cell->omega->numObs, double);
+	cut = newCut(prob->num->prevCols, cell->omega->numObs, cell->k);
 
 	/*********************************** 1. Subproblem solve and update resource function approximation **************************************/
 	/* (a) Construct the subproblem with input observation and master solution, solve the subproblem, and complete stochastic updates */
@@ -169,7 +169,7 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 		piCbarX[c] = vXv(cell->sigma->vals[c].piC, Xvect, prob->coord->CCols, prob->num->cntCcols);
 
 	/* Loop through the observations to perform the argmax procedure. */
-	for (int obs = 0; obs < cell->omega->cnt; obs++) {
+	for (int obs = 0; obs < cell->omega->numObs; obs++) {
 		/* identify the maximal Pi for each observation */
 		istar = computeIstar(prob->num, prob->coord, cell->sigma, cell->delta, piCbarX, Xvect,
 				obs, &argmax);
@@ -184,13 +184,13 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 	/*********************************** 2 Obtain the maximal probability distribution **************************************/
 	/* Solve the distribution separation problem if we are not solving the risk-neutral version. */
 	if ( config.DRO_TYPE == RISK_NEUTRAL && cell->k == 1)  {
-		for ( int obs = 0; obs < cell->omega->cnt; obs++ ) {
-			cell->omega->probs[obs] = cell->omega->weights[obs]/(double) cell->omega->cnt;
+		for ( int obs = 0; obs < cell->omega->numObs; obs++ ) {
+			cell->omega->probs[obs] = cell->omega->weights[obs]/(double) cell->omega->numObs;
 		}
 	}
 	else  {
 		clock_t tic = clock();
-		if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, cell->spIdx, obsStar, newOmegaFlag) ) {
+		if ( obtainProbDist(cell->sep, prob->mean, cell->omega, spObj, cell->spIdx, obsStar, newOmegaFlag, cell->k) ) {
 			errMsg("algorithm", "formOptCut", "failed to solve the distribution separation problem", 0);
 			return -1;
 		}
@@ -199,11 +199,11 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 
 #if defined(SEP_CHECK)
 	double objEst = 0.0, objEst_dro = 0.0;
-	for (int obs = 0; obs < cell->omega->cnt; obs++) {
+	for (int obs = 0; obs < cell->omega->numObs; obs++) {
 		objEst += cell->omega->weights[obs]*spObj[obs];
 		objEst_dro += cell->omega->probs[obs]*spObj[obs];
 	}
-	objEst /= (double) cell->omega->numObs;
+	objEst /= (double) cell->k;
 	printf("\tRisk neutral estimate = %lf, DRO estimate = %lf\n", objEst, objEst_dro);
 #endif
 
@@ -211,7 +211,7 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 	/* (a) Create an affine lower bound */
 	cut->alpha = 0.0;
 	cut->beta[0] = 1.0;
-	for ( int obs = 0; obs < cell->omega->cnt; obs++ ) {
+	for ( int obs = 0; obs < cell->omega->numObs; obs++ ) {
 		cut->alpha += cell->sigma->vals[cut->iStar[obs]].pib * cell->omega->probs[obs];
 		cut->alpha += cell->delta->vals[cell->sigma->lambdaIdx[cut->iStar[obs]]][obs].pib * cell->omega->probs[obs];
 
@@ -220,11 +220,11 @@ int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar
 		for (int c = 1; c <= prob->num->rvCOmCnt; c++)
 			cut->beta[prob->coord->rvCols[c]] += cell->delta->vals[cell->sigma->lambdaIdx[cut->iStar[obs]]][obs].piC[c] * cell->omega->probs[obs];
 	}
-	cut->numObs = cell->omega->numObs;
+	cut->numObs = cell->k;
 
 #if defined(CUT_CHECK)
 	double est1 = 0.0;
-	for (int obs = 0; obs < cell->omega->cnt; obs++) {
+	for (int obs = 0; obs < cell->omega->numObs; obs++) {
 		est1 += cell->omega->probs[obs]*spObj[obs];
 	}
 	double est2 = cutHeight(cut, cell->k, Xvect, prob->num->prevCols, 0, false);

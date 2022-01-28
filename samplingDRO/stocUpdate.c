@@ -46,7 +46,7 @@ int stochasticUpdates(numType *num, coordType *coord, sparseVector *bBar, sparse
  * a duplication.  If it finds a duplicate, it returns the index of that duplicate; otherwise, it adds the vector to the list of distinct realizations
  * and returns the index of that realization. Note that the simulated observation does not have contain one-norm, while the values stored in
  * omegaType do */
-int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmegaFlag, double TOLERANCE) {
+int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmegaFlag, int k, double TOLERANCE) {
 	int cnt;
 
 	/* Since the problem already has the mean values on the right-hand side, remove it from the original observation */
@@ -57,30 +57,29 @@ int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmega
 	}
 
 	/* Compare vector with all the previous observations */
-	for (cnt = 0; cnt < omega->cnt; cnt++) {
+	for (cnt = 0; cnt < omega->numObs; cnt++) {
 		if (equalVector(observ, omega->vals[cnt], omega->numOmega, TOLERANCE)) {
 			break;
 		}
 	}
 
-	if ( cnt == omega->cnt ) {
+	if ( cnt == omega->numObs ) {
 		/* New observation encountered, then add the realization vector to the list. */
-		omega->vals[omega->cnt] = duplicVector(observ, omega->numOmega+1);
-		omega->weights[omega->cnt] = 1;
+		omega->vals[omega->numObs] = duplicVector(observ, omega->numOmega+1);
+		omega->weights[omega->numObs] = 1;
 		(*newOmegaFlag) = true;
-		omega->cnt++;
+		omega->numObs++;
 	}
 	else {
 		omega->weights[cnt]++;
 		(*newOmegaFlag) = false;
 	}
-	omega->numObs++;
 
 	/* Update omega statistics: sample mean */
 	for ( int rv = 1; rv <= omega->numOmega; rv++ ) {
 		for ( int m = 0; m < omega->numStats; m++ ) {
-			omega->sampleStats[m][rv] = ( (omega->numObs-1)*omega->sampleStats[m][rv] +
-					pow(stocMean[rv] + omega->vals[cnt][rv], m+1))/(double) omega->numObs;
+			omega->sampleStats[m][rv] = ( (k-1)*omega->sampleStats[m][rv] +
+					pow(stocMean[rv] + omega->vals[cnt][rv], m+1))/(double) k;
 		}
 	}
 
@@ -90,24 +89,24 @@ int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmega
 #endif
 
 	return cnt;
-}//calcOmega()
+}//END calcOmega()
 
-/* This subroutine is used to refine the elements of omega structure after sampling a batch of obsevrations generated using either internal or
+/* This subroutine is used to refine the elements of omega structure after sampling a batch of observations generated using either internal or
  * external simulator.
  */
 void refineOmega(omegaType *omega, dVector stocMean) {
 
 	/* Compute sample mean */
-	computeSampleStats(omega->vals, omega->weights, omega->numOmega, omega->cnt, omega->numObs, omega->sampleStats, omega->numStats);
+	computeSampleStats(omega->vals, omega->weights, omega->numOmega, omega->numObs, omega->numObs, omega->sampleStats, omega->numStats);
 
 	/* Adjust observations to be centered around mean */
-	for ( int m = 0; m < omega->cnt; m++ ) {
+	for ( int m = 0; m < omega->numObs; m++ ) {
 		for ( int n = 1; n <= omega->numOmega; n++ )
-			omega->vals[m][n] -= stocMean[n-1];
+			omega->vals[m][n] -= stocMean[n];
 	}
 
 	return;
-}//END refineOmega
+}//END refineOmega()
 
 /* This function stores a new lambda_pi dVector in the lambda structure.  Each lambda_pi represents only those dual variables whose rows in the
  * constraint matrix have random elements.  Thus  the (full) dual dVector, Pi,  passed to the function is converted into the sparse dVector lambda_pi.
@@ -216,9 +215,9 @@ int calcDelta(numType *num, coordType *coord, lambdaType *lambda, deltaType *del
 		lambdaPi = expandVector(lambda->vals[elemIdx], coord->rvRows, num->rvRowCnt, num->rows);
 
 		/* go through all the observations and compute pi x b and pi x C */
-		for (idx = 0; idx < omega->cnt; idx++) {
+		for (idx = 0; idx < omega->numObs; idx++) {
 
-			bOmega.val= omega->vals[idx];
+			bOmega.val = omega->vals[idx];
 			COmega.val = omega->vals[idx] + num->rvbOmCnt;
 
 			delta->vals[elemIdx][idx].pib = vXvSparse(lambdaPi, &bOmega);
@@ -250,63 +249,60 @@ omegaType *newOmega(stocType *stoc, int maxObs, int numStats) {
 	for ( int n = 0; n < numStats; n++ ) {
 		omega->sampleStats[n] = (dVector) arr_alloc(stoc->numOmega+1, double);
 	}
-	omega->cnt = 0;
-	omega->numOmega = stoc->numOmega;
 	omega->numObs = 0;
+	omega->numOmega = stoc->numOmega;
 	omega->numStats = numStats;
 
-	if ( config.ALGO_TYPE == SD ) {
-		return omega;
-	}
-
-	/* Build the entire omega structure if full sample is being used. */
-	if ( strstr(stoc->type, "BLOCKS") != NULL ) {
-		if ( (omega->cnt = stoc->numVals[0]) <= config.MAX_OBS) {
-			omega->vals = (dVector *) mem_realloc(omega->vals, omega->cnt*sizeof(dVector));
-			omega->probs = (dVector) mem_realloc(omega->probs, omega->cnt*sizeof(double));
-			for ( cnt = 0; cnt < omega->cnt; cnt++) {
-				omega->probs[cnt]= stoc->probs[0][cnt];
-				if ( !(omega->vals[cnt] = (dVector) arr_alloc(omega->numOmega+1, double)) )
-					errMsg("allocation", "updateOmega", "omega->vals[cnt]", 0);
-				for (i = 0; i < omega->numOmega; i++)
-					omega->vals[cnt][i+1]=stoc->vals[i][cnt]-stoc->mean[i];
-				omega->vals[cnt][0] = oneNorm(omega->vals[cnt]+1, omega->numOmega);
-			}
-		}
-		else {
-			omega->cnt = config.MAX_OBS;
-		}
-	}
-	else if ( strstr(stoc->type, "INDEP") != NULL ) {
-		omega->cnt = 1; i = 0;
-		while ( i < stoc->numOmega ) {
-			omega->cnt *= stoc->numVals[i];
-			if (omega->cnt > config.MAX_OBS) {
-				omega->cnt = config.MAX_OBS;
-				break;
-			}
-			i++;
-		}
-
-		if ( config.ALGO_TYPE == 0 ){
-			omega->vals = (dVector *) mem_realloc(omega->vals, omega->cnt*sizeof(dVector));
-			omega->probs = (dVector) mem_realloc(omega->probs, omega->cnt*sizeof(double));
-			for ( cnt = 0; cnt < omega->cnt; cnt++) {
-				if ( !(omega->vals[cnt] = (dVector) arr_alloc(omega->numOmega+1, double)) )
-					errMsg("allocation", "updateOmega", "omega->vals[cnt]", 0);
-				omega->probs[cnt] = 1; base = omega->cnt;
-				for ( i = 0; i < omega->numOmega; i++ ) {
-					base /= stoc->numVals[i];
-					idx = (int)((double) cnt / (double) base) % stoc->numVals[i];
-					omega->vals[cnt][i+1] = stoc->vals[i][idx]-stoc->mean[i];
-					omega->probs[cnt] *= stoc->probs[i][idx];
-				}
-			}
-		}
-	}
-	else {
-		omega->cnt = config.MAX_OBS;
-	}
+//	if ( config.ALGO_TYPE == SD ) {
+//		return omega;
+//	}
+//
+//	/* Build the entire omega structure if full sample is being used. */
+//	if ( strstr(stoc->type, "BLOCKS") != NULL ) {
+//		if ( (omega->numObs = stoc->numVals[0]) <= config.MAX_OBS) {
+//			omega->vals = (dVector *) mem_realloc(omega->vals, omega->numObs*sizeof(dVector));
+//			omega->probs = (dVector) mem_realloc(omega->probs, omega->numObs*sizeof(double));
+//			for ( cnt = 0; cnt < omega->numObs; cnt++) {
+//				omega->probs[cnt]= stoc->probs[0][cnt];
+//				if ( !(omega->vals[cnt] = (dVector) arr_alloc(omega->numOmega+1, double)) )
+//					errMsg("allocation", "updateOmega", "omega->vals[cnt]", 0);
+//				for (i = 0; i < omega->numOmega; i++)
+//					omega->vals[cnt][i+1] = stoc->vals[i][cnt] - stoc->mean[i];
+//				omega->vals[cnt][0] = oneNorm(omega->vals[cnt]+1, omega->numOmega);
+//			}
+//		}
+//		else {
+//			omega->numObs = config.MAX_OBS;
+//		}
+//	}
+//	else if ( strstr(stoc->type, "INDEP") != NULL ) {
+//		omega->numObs = 1; i = 0;
+//		while ( i < stoc->numOmega ) {
+//			omega->numObs *= stoc->numVals[i];
+//			if (omega->numObs > config.MAX_OBS) {
+//				omega->numObs = config.MAX_OBS;
+//				break;
+//			}
+//			i++;
+//		}
+//
+//		omega->vals = (dVector *) mem_realloc(omega->vals, omega->numObs*sizeof(dVector));
+//		omega->probs = (dVector) mem_realloc(omega->probs, omega->numObs*sizeof(double));
+//		for ( cnt = 0; cnt < omega->numObs; cnt++) {
+//			if ( !(omega->vals[cnt] = (dVector) arr_alloc(omega->numOmega+1, double)) )
+//				errMsg("allocation", "updateOmega", "omega->vals[cnt]", 0);
+//			omega->probs[cnt] = 1; base = omega->numObs;
+//			for ( i = 0; i < omega->numOmega; i++ ) {
+//				base /= stoc->numVals[i];
+//				idx = (int)((double) cnt / (double) base) % stoc->numVals[i];
+//				omega->vals[cnt][i+1] = stoc->vals[i][idx] - stoc->mean[i];
+//				omega->probs[cnt] *= stoc->probs[i][idx];
+//			}
+//		}
+//	}
+//	else {
+//		omega->numObs = config.MAX_OBS;
+//	}
 
 	return omega;
 }//END newOmega()
@@ -403,11 +399,11 @@ void freeDeltaType (deltaType *delta, int numDeltaRows, int omegaCnt, bool parti
 void freeOmegaType(omegaType *omega, bool partial) {
 
 	if ( omega->vals ) {
-		for ( int n = 0; n < omega->cnt; n++ )
+		for ( int n = 0; n < omega->numObs; n++ )
 			if ( omega->vals[n] )
 				mem_free(omega->vals[n]);
 		if ( partial ) {
-			omega->cnt = 0;
+			omega->numObs = 0;
 			omega->numObs = 0;
 			return;
 		}

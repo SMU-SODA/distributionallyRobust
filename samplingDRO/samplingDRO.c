@@ -67,7 +67,7 @@ void parseCmdLine(int argc, char *argv[], cString *probName, cString *inputDir) 
 				outputDir = (cString) arr_alloc(2*BLOCKSIZE, char);
 				strcpy(outputDir, argv[++i]); break;
 			}
-		}}
+			}}
 		else {
 			printf("Input options must begin with a '-'. Use '-?' for help.\n"); exit(0);
 		}

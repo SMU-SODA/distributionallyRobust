@@ -2,10 +2,10 @@
 TOLERANCE    0.001
 
 // Minimum iterations
-MIN_ITER   1
+MIN_ITER   128
 
 // Maximum number of iterations
-MAX_ITER   100
+MAX_ITER   256
 
 // Master type: 0 for LP, 1 for MILP, 5 for QP and 7 for MIQP
 MASTER_TYPE 0
@@ -109,7 +109,7 @@ EVAL_SEED	4742397086462006
 ALGO_TYPE 2
 
 // Number of observations to be used to set the sample average approximation
-MAX_OBS 250
+MAX_OBS 256
 
 // ******************** Distributionally robust parameters ********************
 // Type of ambiguity set: Risk-neutral (0), Moment-matching (1), and Wasserstein distance (2)
@@ -117,6 +117,7 @@ DRO_TYPE 2
 
 // Parameters associated with the ambiguity set
 // Moment-based ambiguity set: Parameter 1 = number of moments and Parameter 2 = bounding error
+// Wasserstein ambiguity set: Parameter 1 = order and Parameter 2 = bounding error
 DRO_PARAM_1 -1
-DRO_PARAM_2 0.5
+DRO_PARAM_2 0.05
 

@@ -17,10 +17,10 @@
 #include "smps.h"
 #include "prob.h"
 
-#define DEBUG
+#undef DEBUG
 #if defined(DEBUG)
 #undef SETUP_CHECK
-#undef SEP_CHECK
+#define SEP_CHECK
 #define ALGO_CHECK
 #undef STOCH_CHECK
 #undef CUT_CHECK
@@ -112,7 +112,6 @@ typedef struct {
 typedef struct {
 	int		numOmega;				/* Number of random variables */
 	int 	numObs;					/* Total number of observations */
-	int 	cnt;					/* Number of unique observations */
 	iVector weights;				/* Frequency of observations */
 	dVector	probs;					/* Probability of observation */
 	dVector	*vals;					/* Observation values */
@@ -243,7 +242,7 @@ int stochasticUpdates(numType *num, coordType *coord, sparseVector *bBar, sparse
 lambdaType *newLambda(int numLambda);
 sigmaType *newSigma(int numSigma);
 deltaType *newDelta(int numDelta);
-int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmegaFlag, double TOLERANCE);
+int calcOmega(dVector observ, dVector stocMean, omegaType *omega, bool *newOmegaFlag, int k, double TOLERANCE);
 void refineOmega(omegaType *omega, dVector stocMean);
 int calcLambda(numType *num, coordType *coord, dVector Pi, lambdaType *lambda, bool *newLambdaFlag);
 int calcSigma(numType *num, coordType *coord, sparseVector *bBar, sparseMatrix *CBar, dVector pi, double mubBar,
@@ -256,13 +255,13 @@ omegaType *newOmega(stocType *stoc, int maxObs, int numStats);
 void freeOmegaType(omegaType *omega, bool partial);
 
 /* separation.c */
-int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag);
-int updtDistSepProb(oneProblem *sep, omegaType *omega, dVector stocMean, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag);
-int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag);
-int updtDistSepProb_W(oneProblem *sep, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag);
-oneProblem *newDistSepProb(dVector stocMean, omegaType *omega, iVector *spIdx);
-oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, iVector *spIdx);
-oneProblem *newDistSepProb_W(omegaType *omega, iVector *spIdx);
+int obtainProbDist(oneProblem *sep, dVector stocMean, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag, int numIter);
+int updtDistSepProb(oneProblem *sep, omegaType *omega, dVector stocMean, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag, int numIter);
+int updtDistSepProb_MM(oneProblem *sep, dVector stocMean, omegaType *omega, iVector spIdx, int obsStar, bool newOmegaFlag);
+int updtDistSepProb_W(oneProblem *sep, omegaType *omega, dVector spObj, iVector spIdx, int obsStar, bool newOmegaFlag, int numIter);
+oneProblem *newDistSepProb(dVector stocMean, omegaType *omega, iVector spIdx);
+oneProblem *newDistSepProb_MM(dVector stocMean, omegaType *omega, iVector spIdx);
+oneProblem *newDistSepProb_W(omegaType *omega, iVector spIdx);
 int cleanDistSepProb(oneProblem *sep, dVector stocMean, omegaType *omega, int numMoments);
 
 /* evalution.c */

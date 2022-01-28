@@ -225,15 +225,6 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 
 	cell->cuts = newCuts(cell->maxCuts);
 
-	cell->time = (runTime *) mem_malloc(sizeof(runTime));
-	cell->time->repTime = 0.0;
-	cell->time->iterTime = cell->time->iterAccumTime = 0.0;
-	cell->time->masterIter = cell->time->masterAccumTime = 0.0;
-	cell->time->subprobIter = cell->time->subprobAccumTime = 0.0;
-	cell->time->optTestIter = cell->time->optTestAccumTime = 0.0;
-	cell->time->argmaxIter = cell->time->argmaxAccumTime = 0.0;
-	cell->time->distSepTime = 0.0;
-
 	/* construct the QP using the current incumbent */
 	if ( config.MASTER_TYPE == PROB_QP ) {
 		if ( constructQP(prob[0], cell, cell->incumbX, cell->quadScalar) ) {
@@ -257,6 +248,8 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 		cell->delta  = newDelta(len);
 	}
 
+	cell->spIdx = (iVector) arr_alloc(len, int);
+
 #if defined(SETUP_CHECK)
 	if ( writeProblem(cell->master->lp, "newMaster.lp") ) {
 		errMsg("write problem", "new_master", "failed to write master problem to file",0);
@@ -272,7 +265,6 @@ cellType *createEmptyCell() {
 
 	/* Allocate memory to all cells used in the algorithm. */
 	cell = (cellType *) mem_malloc(sizeof(cellType));
-	cell->time = (runTime *) mem_malloc(sizeof(runTime));
 	cell->master = cell->subprob = NULL;
 	cell->cuts = NULL;
 	cell->candidX = cell->incumbX = cell->piM = NULL ;
@@ -301,6 +293,15 @@ cellType *createEmptyCell() {
 	cell->iCutUpdt  = 0;
 	cell->gamma		= 0.0;
 	cell->quadScalar = 0.0;
+
+	cell->time = (runTime *) mem_malloc(sizeof(runTime));
+	cell->time->repTime = 0.0;
+	cell->time->iterTime = cell->time->iterAccumTime = 0.0;
+	cell->time->masterIter = cell->time->masterAccumTime = 0.0;
+	cell->time->subprobIter = cell->time->subprobAccumTime = 0.0;
+	cell->time->optTestIter = cell->time->optTestAccumTime = 0.0;
+	cell->time->argmaxIter = cell->time->argmaxAccumTime = 0.0;
+	cell->time->distSepTime = 0.0;
 
 	return cell;
 }//END createEmptyCell();
@@ -348,7 +349,7 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 	if ( config.ALGO_TYPE != SD ) {
 		if (cell->omega) freeOmegaType(cell->omega, true);
 		if ( config.ALGO_TYPE == REFORM ) {
-			if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->cnt, true);
+			if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->numObs, true);
 			if (cell->lambda) freeLambdaType(cell->lambda, true);
 			if (cell->sigma) freeSigmaType(cell->sigma, true);
 		}
@@ -393,7 +394,7 @@ void freeCellType(cellType *cell) {
 		if (cell->cuts) freeCutsType(cell->cuts, false);
 		if (cell->piM) mem_free(cell->piM);
 		if (cell->time) mem_free(cell->time);
-		if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->cnt, false);
+		if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->numObs, false);
 		if (cell->omega) freeOmegaType(cell->omega, false);
 		if (cell->lambda) freeLambdaType(cell->lambda, false);
 		if (cell->sigma) freeSigmaType(cell->sigma, false);
