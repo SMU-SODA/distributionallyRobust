@@ -40,9 +40,23 @@ int solveReformulation(stocType *stoc, probType **prob, cellType **cell) {
 		}
 	}
 	else if ( config.DRO_TYPE == WASSERSTEIN ) {
-		(*cell)->master = setupWassersteinInfReform (prob, (*cell)->omega);
-		if ( (*cell)->master == NULL ) {
-			errMsg("solve", "solveReformulation", "unable to setup Inf-Wasserstein reformulation", 0);
+
+		if ( config.DRO_PARAM_1 == 1) {
+			(*cell)->master = setupWassersteinOneReform (prob, (*cell)->omega);
+			if ( (*cell)->master == NULL ) {
+				errMsg("solve", "solveReformulation", "unable to setup 1-Wasserstein reformulation", 0);
+				return 1;
+			}
+		}
+		else if ( config.DRO_PARAM_1 < 0 ) {
+			(*cell)->master = setupWassersteinInfReform (prob, (*cell)->omega);
+			if ( (*cell)->master == NULL ) {
+				errMsg("solve", "solveReformulation", "unable to setup Inf-Wasserstein reformulation", 0);
+				return 1;
+			}
+		}
+		else {
+			errMsg("solve", "solveReformulation", "reformulation for the chosen Wasserstein metric is not supported", 0);
 			return 1;
 		}
 	}
