@@ -12,9 +12,6 @@
 #include "samplingDRO.h"
 configType config;
 
-int solveReformulation(stocType *stoc, probType **prob, cellType **cell);
-oneProblem *setupMomentMatchReform (probType **prob, omegaType *omega);
-oneProblem *setupWassersteinInfReform (probType **prob, omegaType *omega);
 
 int solveReformulation(stocType *stoc, probType **prob, cellType **cell) {
 	int status;
@@ -29,7 +26,7 @@ int solveReformulation(stocType *stoc, probType **prob, cellType **cell) {
 
 	/* Setup the reformulated problem */
 	if ( config.DRO_TYPE == RISK_NEUTRAL ) {
-		errMsg("solve", "solveReformulation", "no subroutine to setup extensive scenario formulation", 0);
+		errMsg("solve", "solveReformulation", "unable to setup extensive scenario formulation", 0);
 		return 1;
 	}
 	else if ( config.DRO_TYPE == MOMENT_MATCHING ) {
@@ -40,7 +37,6 @@ int solveReformulation(stocType *stoc, probType **prob, cellType **cell) {
 		}
 	}
 	else if ( config.DRO_TYPE == WASSERSTEIN ) {
-
 		if ( config.DRO_PARAM_1 == 1) {
 			(*cell)->master = setupWassersteinOneReform (prob, (*cell)->omega);
 			if ( (*cell)->master == NULL ) {
@@ -56,7 +52,7 @@ int solveReformulation(stocType *stoc, probType **prob, cellType **cell) {
 			}
 		}
 		else {
-			errMsg("solve", "solveReformulation", "reformulation for the chosen Wasserstein metric is not supported", 0);
+			errMsg("solve", "solveReformulation", "reformulation for the chosen ambiguity set is not supported", 0);
 			return 1;
 		}
 	}
@@ -287,6 +283,14 @@ oneProblem *setupMomentMatchReform (probType **prob, omegaType *omega) {
 
 	return reform;
 }//END setupMomentMatchReform()
+
+oneProblem *setupWassersteinOneReform (probType **prob, omegaType *omega) {
+	oneProblem *reform = NULL;
+
+	printf("We do not have a subroutine to construct 1-Wasserstein reformulation.\n");
+
+	return reform;
+}//END setupWassersteinOneReform()
 
 oneProblem *setupWassersteinInfReform (probType **prob, omegaType *omega) {
 	oneProblem *reform = NULL;

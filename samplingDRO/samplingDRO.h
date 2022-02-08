@@ -17,10 +17,10 @@
 #include "smps.h"
 #include "prob.h"
 
-#undef DEBUG
+#define DEBUG
 #if defined(DEBUG)
 #undef SETUP_CHECK
-#define SEP_CHECK
+#undef SEP_CHECK
 #define ALGO_CHECK
 #undef STOCH_CHECK
 #undef CUT_CHECK
@@ -36,7 +36,8 @@ enum droType {
 enum algoType {
 	SD,
 	L_SHAPED,
-	REFORM
+	REFORM,
+	REFORM_DECOMPOSE
 };
 
 typedef struct{
@@ -211,7 +212,7 @@ int updateRHS(LPptr lp, cutsType *cuts, int numIter, double lb);
 int changeQPrhs(probType *prob, cellType *cell, dVector xk);
 int changeQPbds(LPptr lp, int numCols, dVector bdl, dVector bdu, dVector xk);
 int addCut2Master(cellType *cell, cutsType *cuts, oneCut *cut, int lenX, int obsID);
-oneProblem *newMaster(oneProblem *orig, double lb);
+oneProblem *newMaster(oneProblem *orig, double lb, int numCols, double objCoeff);
 
 /* subproblem.c */
 int solveSubprob(probType *prob, oneProblem *subproblem, dVector Xvect, dVector obsVals, bool *spFeasFlag, double *subprobTime, dVector piS, double *mubBar);
@@ -268,5 +269,11 @@ int cleanDistSepProb(oneProblem *sep, dVector stocMean, omegaType *omega, int nu
 int evaluate(FILE *soln, stocType *stoc, probType **prob, cellType *cell, dVector Xvect);
 void printEvaluationSummary(FILE *soln, double mean, double stdev, int cnt);
 void writeEvaluationStatistics(FILE *soln, double mean, double stdev, int cnt);
+
+/* reform.c */
+int solveReformulation(stocType *stoc, probType **prob, cellType **cell);
+oneProblem *setupMomentMatchReform (probType **prob, omegaType *omega);
+oneProblem *setupWassersteinOneReform (probType **prob, omegaType *omega);
+oneProblem *setupWassersteinInfReform (probType **prob, omegaType *omega);
 
 #endif /* SAMPLINGDRO_H_ */

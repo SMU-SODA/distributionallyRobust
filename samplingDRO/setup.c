@@ -157,12 +157,10 @@ int setupAlgo(oneProblem *orig, stocType *stoc, timeType *tim, probType ***prob,
 	}
 
 	/* create the cells which will be used in the algorithms */
-	if ( config.ALGO_TYPE != REFORM ) {
-		(*cell) = newCell(stoc, (*prob), (*meanSol));
-		if ( (*cell) == NULL ) {
-			errMsg("setup", "setupAlgo", "failed to create the necessary cell structure", 0);
-			goto TERMINATE;
-		}
+	(*cell) = newCell(stoc, (*prob), (*meanSol));
+	if ( (*cell) == NULL ) {
+		errMsg("setup", "setupAlgo", "failed to create the necessary cell structure", 0);
+		goto TERMINATE;
 	}
 
 	mem_free(lb);
@@ -179,7 +177,16 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	cell = createEmptyCell();
 
 	/* setup the master problem */
-	cell->master = newMaster(prob[0]->sp, prob[0]->lb);
+	if ( config.ALGO_TYPE == L_SHAPED || config.ALGO_TYPE == SD ) {
+		cell->master = newMaster(prob[0]->sp, prob[0]->lb, 1, 1.0);
+	}
+	else if (config.ALGO_TYPE == REFORM_DECOMPOSE ) {
+		cell->master = newMaster(prob[0]->sp, prob[0]->lb, 1+config.MAX_OBS, config.DRO_PARAM_2);
+	}
+	else {
+		/* If it is reformulation, then simply return the empty cell */
+		return cell;
+	}
 	if ( cell->master == NULL ) {
 		errMsg("setup", "newCell", "failed to setup the master problem", 0);
 		return NULL;
@@ -203,26 +210,29 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	cell->gamma		= 0.0;
 
 	/* incumbent solution and estimates */
-	if (config.MASTER_TYPE == PROB_QP || config.ALGO_TYPE == SD ) {
+	if ( config.ALGO_TYPE == SD ) {
 		cell->incumbX   = duplicVector(xk, prob[0]->num->cols+1);
 
 		cell->quadScalar= config.MIN_QUAD_SCALAR;     						/* The quadratic scalar, 'sigma'*/
 		cell->incumbEst = cell->candidEst;
 
-		if ( config.MASTER_TYPE == PROB_QP ) {
+		if ( config.MASTER_TYPE == PROB_QP )
 			cell->maxCuts = config.CUT_MULT*prob[0]->num->cols + 1;
-		}
-		else {
+		else
 			cell->maxCuts = config.MAX_ITER + config.MAX_ITER / config.TAU + 1;
-		}
 
 		cell->piM = (dVector) arr_alloc(prob[0]->num->rows + cell->maxCuts + 1, double);
 	}
 	else {
 		cell->quadScalar= 0.0;
-		cell->maxCuts = config.MAX_ITER;
+
+		if ( config.ALGO_TYPE == L_SHAPED )
+			cell->maxCuts = config.MAX_ITER;
+		else if ( config.ALGO_TYPE == REFORM_DECOMPOSE )
+			cell->maxCuts = config.MAX_ITER*config.MAX_OBS;
 	}
 
+	/* cuts */
 	cell->cuts = newCuts(cell->maxCuts);
 
 	/* construct the QP using the current incumbent */
@@ -235,10 +245,11 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 
 	/* stochastic elements */
 	int len;
-	if ( config.ALGO_TYPE ==  L_SHAPED )
-		len = config.MAX_OBS;
-	else
+	if ( config.ALGO_TYPE ==  SD )
 		len = config.MAX_ITER + config.MAX_ITER / config.TAU + 1;
+	else
+		len = config.MAX_OBS;
+
 
 	cell->omega  = newOmega(stoc, len, config.DRO_TYPE == MOMENT_MATCHING? config.DRO_PARAM_1:0);
 	if ( config.ALGO_TYPE == SD ) {

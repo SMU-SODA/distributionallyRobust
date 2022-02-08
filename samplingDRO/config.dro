@@ -105,11 +105,11 @@ EVAL_SEED	4742397086462006
 
 
 // ***************************** Algorithm Choice *****************************
-// Set to (0) stochastic decomposition, (1) L-shaped, and (2) reformulation approach.
-ALGO_TYPE 2
+// Set to (0) stochastic decomposition, (1) L-shaped, (2) reformulation, and (3) reform-decomposition approach.
+ALGO_TYPE 3
 
 // Number of observations to be used to set the sample average approximation
-MAX_OBS 256
+MAX_OBS 100
 
 // ******************** Distributionally robust parameters ********************
 // Type of ambiguity set: Risk-neutral (0), Moment-matching (1), and Wasserstein distance (2)

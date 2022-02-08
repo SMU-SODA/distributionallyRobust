@@ -52,16 +52,16 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 		}
 
 		/* Setup the initial sample for omega structure */
-		if ( config.ALGO_TYPE == L_SHAPED ) {
+		if ( config.ALGO_TYPE != SD ) {
 			cell->omega->numObs = config.MAX_OBS;
-			if ( setupSAA(stoc, NULL, &config.RUN_SEED, &cell->omega->vals, cell->omega->probs, cell->omega->weights,
+			if ( setupSAA(stoc, NULL, &config.RUN_SEED[0], &cell->omega->vals, cell->omega->probs, cell->omega->weights,
 					&cell->omega->numObs, config.TOLERANCE) ) {
 				errMsg("algorithm", "algo", "failed to setup a SAA", 0);
 				goto TERMINATE;
 			}
 		}
 
-		if ( config.ALGO_TYPE != REFORM ) {
+		if ( config.ALGO_TYPE == L_SHAPED || config.ALGO_TYPE == SD ) {
 			/* Setup or clean the distribution separation problem */
 			if ( (cell->sep = newDistSepProb(prob[1]->mean, cell->omega, cell->spIdx)) == NULL) {
 				errMsg("algorithm", "algo", "failed to setup a new distribution separation problem", 0);
@@ -90,6 +90,11 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 				goto TERMINATE;
 			}
 			break;
+		case REFORM_DECOMPOSE:
+			if ( solveReformDecompose(stoc, prob, &cell) ) {
+				errMsg("algorithm", "algo", "failed to solve a reformulated problem using decomposition problem", 0);
+				goto TERMINATE;
+			}
 		default:
 			errMsg("algorithm", "algo", "unknown algorithm type", 0);
 			break;
@@ -245,12 +250,6 @@ int solveDRSDCell(stocType *stoc, probType **prob, cellType *cell) {
 	mem_free(observ);
 	return 0;
 }//END solveDRSDCell()
-
-int solveReformCell(stocType *stoc, probType **prob, cellType *cell) {
-
-
-	return 0;
-}//END solveReformCell()
 
 void writeOptimizationStatistics(FILE *soln, FILE *incumb, probType **prob, cellType *cell, int rep) {
 

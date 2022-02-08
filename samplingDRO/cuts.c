@@ -116,7 +116,7 @@ int formDeterministicCut(probType *prob, cellType *cell, dVector Xvect) {
 		mem_free(beta);
 	}
 	return 1;
-}//END formOptCut()
+}//END formDeterministicCut()
 
 int formStochasticCut(probType *prob, cellType *cell, dVector Xvect, int obsStar, bool newOmegaFlag) {
 	oneCut 	*cut;

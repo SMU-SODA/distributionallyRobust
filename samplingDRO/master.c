@@ -70,9 +70,8 @@ int solveMaster(numType *num, sparseVector *dBar, cellType *cell, double lb) {
 
 /* This subroutine initializes the master problem by copying information from the decomposed prob[0](type: oneProblem) and adding a column for
  * theta for modified benders decomposition. */
-oneProblem *newMaster(oneProblem *orig, double lb) {
+oneProblem *newMaster(oneProblem *orig, double lb, int extraCols, double objCoeff) {
 	oneProblem 	*master;
-	int         r, i, j, idx, cnt;
 	long        colOffset, rowOffset;
 	char        *q;
 
@@ -88,9 +87,9 @@ oneProblem *newMaster(oneProblem *orig, double lb) {
 	master->matsz 	= orig->matsz;                   	/* extended matrix size */
 	master->marsz 	= orig->marsz;                   	/* extended row size */
 	master->rstorsz = orig->rstorsz;               		/* memory size for storing row names */
-	master->mac 	= orig->mac+1;           			/* number of columns + etas */
-	master->macsz 	= orig->macsz + 1;       			/* extended column size */
-	master->cstorsz = orig->cstorsz + NAMESIZE;    		/* memory size for storing column names */
+	master->cstorsz = orig->cstorsz + NAMESIZE*extraCols; 		/* memory size for storing column names */
+	master->mac 	= orig->mac + extraCols;			/* number of columns + etas */
+	master->macsz 	= orig->mac + extraCols;			/* extended column size */
 
 	/* Allocate memory to the information whose type is cString */
 	master->name = (cString) arr_alloc(NAMESIZE, char);
@@ -123,7 +122,7 @@ oneProblem *newMaster(oneProblem *orig, double lb) {
 	strcpy(master->objname, orig->objname);     /* Copy objective name */
 
 	/* Copy problem's column and row names, and calculate the pointers for master/copy row and column names. */
-	i = 0;
+	int i = 0;
 	for (q = orig->cname[0]; q < orig->cname[0] + orig->cstorsz; q++)
 		master->cstore[i++] = *q;
 	colOffset = master->cstore - orig->cname[0];
@@ -136,8 +135,8 @@ oneProblem *newMaster(oneProblem *orig, double lb) {
 	}
 
 	/* Copy all the column information from the original master problem */
-	cnt = 0;
-	for (j = 0; j < orig->mac; j++) {
+	int cnt = 0;
+	for (int j = 0; j < orig->mac; j++) {
 		master->objx[j] = orig->objx[j];		/* Copy objective function coefficients */
 		master->ctype[j] = orig->ctype[j];		/* Copy the decision variable type */
 		master->bdu[j] = orig->bdu[j];			/* Copy the upper bound and lower bound */
@@ -146,7 +145,7 @@ oneProblem *newMaster(oneProblem *orig, double lb) {
 		master->matbeg[j] = cnt;				/* Copy the master sparse matrix beginning position of each column */
 		master->matcnt[j] = orig->matcnt[j];	/* Copy the sparse matrix non-zero element count */
 		master->ctype[j] = orig->ctype[j];		/* Loop through all non-zero elements in this column */
-		for (idx = orig->matbeg[j]; idx < orig->matbeg[j] + orig->matcnt[j]; idx++) {
+		for (int idx = orig->matbeg[j]; idx < orig->matbeg[j] + orig->matcnt[j]; idx++) {
 			master->matval[cnt] = orig->matval[idx];	/* Copy the non-zero coefficient */
 			master->matind[cnt] = orig->matind[idx];	/* Copy the row entry of the non-zero elements */
 			cnt++;
@@ -154,22 +153,28 @@ oneProblem *newMaster(oneProblem *orig, double lb) {
 	}
 
 	/* Copy all information concerning rows of master */
-	for (r = 0; r < orig->mar; r++) {
+	for (int r = 0; r < orig->mar; r++) {
 		master->rhsx[r] = orig->rhsx[r]; 	/* Copy the right hand side value */
 		master->senx[r] = orig->senx[r];	/* Copy the constraint sense */
 		master->rname[r] = orig->rname[r] + rowOffset; /* Copy row names, offset by length */
 	}
 
-	/* Initialize information for the extra column in the new master. */
+	/* Initialize information for the extra columns in the new master. */
+	char tempName[NAMESIZE];
 	colOffset = orig->cstorsz;
-	strcpy(master->cstore + orig->cstorsz, "eta");
-	master->cname[orig->mac] = master->cstore + colOffset;
-	master->objx[orig->mac] = 1.0;			// orig->mac is the last column in the original master
-	master->ctype[orig->mac] = 'C';
-	master->bdu[orig->mac] = INFBOUND;
-	master->bdl[orig->mac] = lb;
-	master->matbeg[orig->mac] = orig->numnz;	// Beginning point in matval/matind in eta columns. every eta column begins at the same address
-	master->matcnt[orig->mac] = 0;               // Only optimality cuts has eta
+	for ( int n = 0; n < extraCols; n++ ) {
+		sprintf(tempName, "eta_%d", n);
+		strcpy(master->cstore + colOffset, tempName);
+		master->cname[orig->mac+n] = master->cstore + colOffset;
+		master->objx[orig->mac+n] = (n == 0) ? objCoeff:1.0;
+		master->ctype[orig->mac+n] = 'C';
+		master->bdu[orig->mac+n] = INFBOUND;
+		master->bdl[orig->mac+n] = lb;
+		master->matbeg[orig->mac+n] = orig->numnz;
+		master->matcnt[orig->mac+n] = 0;
+
+		colOffset += strlen(tempName) + 1;
+	}
 
 	/* Load the copy into CPLEX */
 	master->lp = setupProblem(master->name, master->type, master->mac, master->mar, master->objsen, master->objx, master->rhsx, master->senx, master->matbeg, master->matcnt,master->matind, master->matval, master->bdl, master->bdu, NULL, master->cname, master->rname, master->ctype);
