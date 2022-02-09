@@ -166,7 +166,7 @@ oneProblem *newMaster(oneProblem *orig, double lb, int extraCols, double objCoef
 		sprintf(tempName, "eta_%d", n);
 		strcpy(master->cstore + colOffset, tempName);
 		master->cname[orig->mac+n] = master->cstore + colOffset;
-		master->objx[orig->mac+n] = (n == 0) ? objCoeff:1.0;
+		master->objx[orig->mac+n] = (n == 0) ? objCoeff:1.0/(double) (extraCols-1);
 		master->ctype[orig->mac+n] = 'C';
 		master->bdu[orig->mac+n] = INFBOUND;
 		master->bdl[orig->mac+n] = lb;

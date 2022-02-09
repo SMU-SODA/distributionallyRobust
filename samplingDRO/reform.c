@@ -13,16 +13,8 @@
 configType config;
 
 
-int solveReformulation(stocType *stoc, probType **prob, cellType **cell) {
+int solveReformulation(stocType *stoc, probType **prob, cellType *cell) {
 	int status;
-
-	(*cell) = createEmptyCell();
-
-	/* Simulate the observations */
-	(*cell)->omega  = newOmega(stoc, config.MAX_OBS, 0);
-	(*cell)->omega->numObs = config.MAX_OBS;
-	setupSAA(stoc, NULL, &config.RUN_SEED[0], &(*cell)->omega->vals, (*cell)->omega->probs, (*cell)->omega->weights,
-			&(*cell)->omega->numObs, config.TOLERANCE);
 
 	/* Setup the reformulated problem */
 	if ( config.DRO_TYPE == RISK_NEUTRAL ) {
@@ -30,23 +22,23 @@ int solveReformulation(stocType *stoc, probType **prob, cellType **cell) {
 		return 1;
 	}
 	else if ( config.DRO_TYPE == MOMENT_MATCHING ) {
-		(*cell)->master = setupMomentMatchReform(prob, (*cell)->omega);
-		if ( (*cell)->master == NULL ) {
+		cell->master = setupMomentMatchReform(prob, cell->omega);
+		if ( cell->master == NULL ) {
 			errMsg("solve", "solveReformulation", "unable to setup moment matching-based reformulation", 0);
 			return 1;
 		}
 	}
 	else if ( config.DRO_TYPE == WASSERSTEIN ) {
 		if ( config.DRO_PARAM_1 == 1) {
-			(*cell)->master = setupWassersteinOneReform (prob, (*cell)->omega);
-			if ( (*cell)->master == NULL ) {
+			cell->master = setupWassersteinOneReform (prob, cell->omega);
+			if ( cell->master == NULL ) {
 				errMsg("solve", "solveReformulation", "unable to setup 1-Wasserstein reformulation", 0);
 				return 1;
 			}
 		}
 		else if ( config.DRO_PARAM_1 < 0 ) {
-			(*cell)->master = setupWassersteinInfReform (prob, (*cell)->omega);
-			if ( (*cell)->master == NULL ) {
+			cell->master = setupWassersteinInfReform (prob, cell->omega);
+			if ( cell->master == NULL ) {
 				errMsg("solve", "solveReformulation", "unable to setup Inf-Wasserstein reformulation", 0);
 				return 1;
 			}
@@ -62,24 +54,24 @@ int solveReformulation(stocType *stoc, probType **prob, cellType **cell) {
 	}
 
 	/* Solve the reformulated problem */
-	if ( solveProblem((*cell)->master->lp, (*cell)->master->name, config.MASTER_TYPE, &status) ) {
-		writeProblem((*cell)->master->lp, "error.lp");
+	if ( solveProblem(cell->master->lp, cell->master->name, config.MASTER_TYPE, &status) ) {
+		writeProblem(cell->master->lp, "error.lp");
 		errMsg("algorithm", "solveReformulation", "failed to solve the master problem", 0);
 		return 1;
 	}
 
 	/* Obtain the primal solution and the objective function value. */
-	(*cell)->candidX = (dVector) arr_alloc(prob[0]->num->cols+1, double);
-	if ( getPrimal((*cell)->master->lp, (*cell)->candidX, prob[0]->num->cols) ) {
+	cell->candidX = (dVector) arr_alloc(prob[0]->num->cols+1, double);
+	if ( getPrimal(cell->master->lp, cell->candidX, prob[0]->num->cols) ) {
 		errMsg("algorithm", "solveReformulation", "failed to obtain the primal solution for master", 0);
 		return 1;
 	}
-	(*cell)->incumbEst = getObjective((*cell)->master->lp, PROB_LP);
+	cell->incumbEst = getObjective(cell->master->lp, PROB_LP);
 
-	for ( int i = 0; i < (*cell)->master->mac; i++ )
-		mem_free((*cell)->master->cname[i]);
-	for ( int i = 0; i < (*cell)->master->mar; i++ )
-		mem_free((*cell)->master->rname[i]);
+	for ( int i = 0; i < cell->master->mac; i++ )
+		mem_free(cell->master->cname[i]);
+	for ( int i = 0; i < cell->master->mar; i++ )
+		mem_free(cell->master->rname[i]);
 	return 0;
 }//END solveReformulation()
 
@@ -417,7 +409,7 @@ oneProblem *setupWassersteinInfReform (probType **prob, omegaType *omega) {
 	for ( int obs = 0; obs < omega->numObs; obs++ ) {
 		for ( int rv = 0; rv < prob[1]->num->numRV; rv++ ) {
 			int idx = prob[0]->sp->mar + obs*prob[1]->sp->mar + prob[1]->coord->rvRows[rv+1]-1;
-			reform->rhsx[idx] = (omega->vals[obs][rv+1] + config.DRO_PARAM_2);
+			reform->rhsx[idx] = (prob[1]->mean[rv+1] + omega->vals[obs][rv+1] + config.DRO_PARAM_2);
 		}
 	}
 

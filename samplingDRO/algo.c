@@ -59,6 +59,14 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 				errMsg("algorithm", "algo", "failed to setup a SAA", 0);
 				goto TERMINATE;
 			}
+
+			/* Shift the observations to center around their means. */
+			for ( int obs = 0; obs < cell->omega->numObs; obs++ ) {
+				for ( int m = 1; m <= cell->omega->numOmega; m++ ) {
+					cell->omega->vals[obs][m] -= stoc->mean[m-1];
+					cell->omega->vals[obs][0] += cell->omega->vals[obs][m];
+				}
+			}
 		}
 
 		if ( config.ALGO_TYPE == L_SHAPED || config.ALGO_TYPE == SD ) {
@@ -85,16 +93,17 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 			}
 			break;
 		case REFORM:
-			if ( solveReformulation(stoc, prob, &cell) ) {
+			if ( solveReformulation(stoc, prob, cell) ) {
 				errMsg("algorithm", "algo", "failed to solve a reformulated problem", 0);
 				goto TERMINATE;
 			}
 			break;
 		case REFORM_DECOMPOSE:
-			if ( solveReformDecompose(stoc, prob, &cell) ) {
+			if ( solveReformDecompose(stoc, prob, cell) ) {
 				errMsg("algorithm", "algo", "failed to solve a reformulated problem using decomposition problem", 0);
 				goto TERMINATE;
 			}
+			break;
 		default:
 			errMsg("algorithm", "algo", "unknown algorithm type", 0);
 			break;

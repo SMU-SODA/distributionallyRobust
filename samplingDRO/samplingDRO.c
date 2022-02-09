@@ -67,7 +67,34 @@ void parseCmdLine(int argc, char *argv[], cString *probName, cString *inputDir) 
 				outputDir = (cString) arr_alloc(2*BLOCKSIZE, char);
 				strcpy(outputDir, argv[++i]); break;
 			}
-			}}
+			case 'a': {
+				config.ALGO_TYPE = atoi(argv[++i]);
+				if ( argv[i][0] == '-') {
+					errMsg("parameter read", "parseCmdLine()", "expecting a parameter after -s", 0); goto TERMINATE;
+				}
+				if ( config.ALGO_TYPE == SD ) {
+					config.MIN_ITER = atoi(argv[++i]);
+				}
+				else {
+					config.MAX_OBS = atoi(argv[++i]);
+				}
+				break;
+			}
+			case 'd': {
+				config.DRO_TYPE = atoi(argv[++i]);
+				if ( argv[i][0] == '-') {
+					errMsg("parameter read", "parseCmdLine()", "expecting a parameter after -s", 0); goto TERMINATE;
+				}
+				config.DRO_PARAM_1 = atoi(argv[++i]);
+				config.DRO_PARAM_1 = (config.DRO_PARAM_1 > 3)? -1: config.DRO_PARAM_1;
+				if ( argv[i][0] == '-') {
+					errMsg("parameter read", "parseCmdLine()", "expecting a parameter after -s", 0); goto TERMINATE;
+				}
+				config.DRO_PARAM_2 = atof(argv[++i]);
+				break;
+			}
+			}
+		}
 		else {
 			printf("Input options must begin with a '-'. Use '-?' for help.\n"); exit(0);
 		}
@@ -75,6 +102,7 @@ void parseCmdLine(int argc, char *argv[], cString *probName, cString *inputDir) 
 
 	if ( probName == NULL || inputDir == NULL || outputDir == NULL ) {
 		printf("Problem name, input and output directory are mandatory input.\n");
+		TERMINATE:
 		if ( (*probName) ) mem_free((*probName));
 		if ( outputDir ) mem_free(outputDir);
 		if ( (*inputDir) ) mem_free((*inputDir));
@@ -91,5 +119,12 @@ void printHelpMenu() {
 	printf("         -p string  -> problem name.\n");
 	printf("         -i string  -> input directory where the problem SMPS files are saved.\n");
 	printf("         -o string  -> output directory where the result files will be written.\n");
-
+	printf("         -a string  -> algorithm type to use.\n"
+			"           (0) stochastic decomposition, (1) L-shaped, (2) reformulation, and (3) reform-decomposition approach.\n"
+			"           The option must follow with number of observations to use in the approximations (SAA/SD).\n");
+	printf("         -d string  -> ambiguity set description:\n"
+			"           The option must follow with an integer and a double parameter.\n"
+			"           Risk-neutral (0)             : (no options necessary);\n"
+			"           Moment-matching (1)          : number of moments and error;\n"
+			"           and Wasserstein distance (2) : metric type and error.\n");
 }//END helpMenu()

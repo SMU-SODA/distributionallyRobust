@@ -176,6 +176,13 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 
 	cell = createEmptyCell();
 
+	int len;
+	if ( config.ALGO_TYPE ==  SD )
+		len = config.MAX_ITER + config.MAX_ITER / config.TAU + 1;
+	else
+		len = config.MAX_OBS;
+	cell->omega  = newOmega(stoc, len, config.DRO_TYPE == MOMENT_MATCHING? config.DRO_PARAM_1:0);
+
 	/* setup the master problem */
 	if ( config.ALGO_TYPE == L_SHAPED || config.ALGO_TYPE == SD ) {
 		cell->master = newMaster(prob[0]->sp, prob[0]->lb, 1, 1.0);
@@ -244,14 +251,6 @@ cellType *newCell(stocType *stoc, probType **prob, dVector xk) {
 	}
 
 	/* stochastic elements */
-	int len;
-	if ( config.ALGO_TYPE ==  SD )
-		len = config.MAX_ITER + config.MAX_ITER / config.TAU + 1;
-	else
-		len = config.MAX_OBS;
-
-
-	cell->omega  = newOmega(stoc, len, config.DRO_TYPE == MOMENT_MATCHING? config.DRO_PARAM_1:0);
 	if ( config.ALGO_TYPE == SD ) {
 		/* Initialize all the elements which will be used to store dual information */
 		cell->lambda = newLambda(len);

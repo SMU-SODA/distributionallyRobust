@@ -18,7 +18,7 @@ bool optimal(probType *prob, cellType *cell) {
 	clock_t tic = clock();
 
 	if ( cell->k > config.MIN_ITER ) {
-		if ( config.ALGO_TYPE != SD ) {
+		if ( config.ALGO_TYPE == L_SHAPED ) {
 			est = vXvSparse(cell->candidX, prob->dBar) + maxCutHeight(cell->cuts, cell->k, cell->candidX, prob->num->cols, prob->lb, false);
 			if (cell->candidEst >= 0){
 				cell->optFlag = (est <= (1 + config.EPSILON) * cell->candidEst);
@@ -39,6 +39,10 @@ bool optimal(probType *prob, cellType *cell) {
 #if defined(ALGO_CHECK)
 	printf("\tOptimality: Candidate estimate = %lf; Incumbent estimate = %lf\n", cell->candidEst, cell->incumbEst);
 #endif
+		}
+		else if ( config.ALGO_TYPE == REFORM_DECOMPOSE ) {
+			cell->optFlag = fabs(cell->incumbEst - cell->candidEst) < config.EPSILON;
+			cell->incumbEst = cell->candidEst;
 		}
 		else {
 			fprintf(stderr, "Optimality rules not set.\n");

@@ -12,11 +12,11 @@
 #include "samplingDRO.h"
 configType config;
 
-int solveReformDecompose(stocType *stoc, probType **prob, cellType *cell);
-
 int solveReformDecompose(stocType *stoc, probType **prob, cellType *cell) {
 	int candidCut;
 	clock_t tic;
+
+	cell->incumbEst = INFINITY;
 
 	/* Main loop of the algorithm */
 	while ( cell->k < config.MAX_ITER ) {
@@ -53,28 +53,30 @@ int solveReformDecompose(stocType *stoc, probType **prob, cellType *cell) {
 }//END solveReformDecompose()
 
 int formReformCuts(probType *prob, cellType *cell, dVector Xvect) {
-	oneCut *cut;
-	dVector piS, alpha, *beta, piCBar, spObj;
+	dVector piS, beta, piCBar;
+	iVector indices;
 	sparseMatrix COmega;
 	sparseVector bOmega;
-	double mubBar;
-	int obs, cutID = -1;
-	clock_t tic;
+	char cutName[NAMESIZE];
+	double mubBar, alpha;
+	static int cummCutNum = 0;
 
 	/* Allocate memory and initializations */
 	piS = (dVector) arr_alloc(prob->num->rows+1, double);
-	spObj = (dVector) arr_alloc(cell->omega->numObs, double);
-	alpha = (dVector) arr_alloc(cell->omega->numObs, double);
-	beta = (dVector *) arr_alloc(cell->omega->numObs, double);
+	indices = (iVector) arr_alloc(prob->num->prevCols+2, int);
 
 	bOmega.cnt = prob->num->rvbOmCnt; bOmega.col = prob->coord->rvbOmRows;
 	COmega.cnt = prob->num->rvCOmCnt; COmega.col = prob->coord->rvCOmCols; COmega.row = prob->coord->rvCOmRows;
-	cut = newCut(prob->num->prevCols, cell->k, cell->omega->numObs);
+
+	for ( int i = 1; i <= prob->num->prevCols; i++ )
+		indices[i] = i-1;
+	indices[prob->num->prevCols+1] = prob->num->prevCols;
 
 	/* All the subproblems are solved in any iteration. */
-	for ( obs = 0; obs < cell->omega->numObs; obs++ ) {
+	/* Loops on \xi */
+	for ( int m = 0; m < cell->omega->numObs; m++ ) {
 		/* 1a. Construct the subproblem with a given observation and master solution, solve the subproblem, and obtain dual information. */
-		if ( solveSubprob(prob, cell->subprob, Xvect, cell->omega->vals[obs], &cell->spFeasFlag, &cell->time->subprobIter, piS, &mubBar) ) {
+		if ( solveSubprob(prob, cell->subprob, Xvect, cell->omega->vals[m], &cell->spFeasFlag, &cell->time->subprobIter, piS, &mubBar) ) {
 			errMsg("algorithm", "solveAgents", "failed to solve the subproblem", 0);
 			goto TERMINATE;;
 		}
@@ -84,66 +86,47 @@ int formReformCuts(probType *prob, cellType *cell, dVector Xvect) {
 			break;
 		}
 
-		/* Extract the objective function value of the subproblem. */
-		spObj[obs] = getObjective(cell->subprob->lp, cell->subprob->type);
-
 		/* 1b. Compute the cut coefficients */
-		bOmega.val = cell->omega->vals[obs] + prob->coord->rvOffset[0];
-		COmega.val = cell->omega->vals[obs] + prob->coord->rvOffset[1];
+		bOmega.val = cell->omega->vals[m] + prob->coord->rvOffset[0];
+		COmega.val = cell->omega->vals[m] + prob->coord->rvOffset[1];
 
-		alpha[obs] = vXvSparse(piS, prob->bBar) + mubBar + vXvSparse(piS, &bOmega);
+		alpha = vXvSparse(piS, prob->bBar) + mubBar + vXvSparse(piS, &bOmega);
 
-		beta[obs] = vxMSparse(piS, prob->Cbar, prob->num->prevCols);
+		beta = vxMSparse(piS, prob->Cbar, prob->num->prevCols+1);
 		piCBar = vxMSparse(piS, &COmega, prob->num->prevCols);
 		for (int c = 1; c <= prob->num->rvCOmCnt; c++)
-			beta[obs][prob->coord->rvCOmCols[c]] += piCBar[c];
+			beta[prob->coord->rvCOmCols[c]] += piCBar[c];
 		mem_free(piCBar);
 
 #if defined(CUT_CHECK)
-		printf("Objective function value vs. estimate = (%lf v. %lf)\n", spObj[obs], alpha[obs] - vXv(beta[obs], Xvect, NULL, prob->num->prevCols));
+		printf("Objective function value vs. estimate = (%lf v. %lf)\n", getObjective(cell->subprob->lp, PROB_LP),
+				alpha - vXv(beta, Xvect, NULL, prob->num->prevCols));
 #endif
-	}
 
-	/* 2. Compute the aggregated cut coefficients */
-	for ( obs = 0; obs < cell->omega->numObs; obs++ ) {
-		cut->alpha += cell->omega->probs[obs]*alpha[obs];
-		for (int c = 1; c <= prob->num->prevCols; c++)
-			cut->beta[c] += cell->omega->probs[obs]*beta[obs][c];
-	}
-	cut->numObs = cell->omega->numObs;
+		beta[0] = 1.0;			/* coefficient of \eta */
+		for ( int n = 0; n < cell->omega->numObs; n++ ) {
+			/* Coefficient of \lambda */
+			indices[0] = prob->num->prevCols + 1 + n;
+			beta[prob->num->prevCols+1] = pNorm(cell->omega->vals[m], cell->omega->vals[n], prob->num->numRV, config.DRO_PARAM_1);
 
-	/* 4. Add cut to master. */
-	cut->beta[0] = 1.0;
-	if ( config.MASTER_TYPE == PROB_QP )
-		cut->alphaIncumb = cut->alpha - vXv(cut->beta, cell->incumbX, NULL, prob->num->prevCols);
-	else
-		cut->alphaIncumb = cut->alpha;
-
-	/* Add cut to the master problem  */
-	if ( (cutID = addCut2Master(cell, cell->cuts, cut, prob->num->prevCols, 0)) < 0 ) {
-		errMsg("algorithm", "formSDCut", "failed to add the new cut to master problem", 0);
-		goto TERMINATE;
-	}
-
-	if ( piS ) mem_free(piS);
-	if ( spObj ) mem_free(spObj);
-	if ( alpha) mem_free(alpha);
-	if ( beta ) {
-		for ( obs = 0; obs < cell->omega->numObs; obs++ ) {
-			if (beta[obs]) mem_free(beta[obs]);
+			/* Add cut to the master problem  */
+			sprintf(cutName, "cut_%04d", cummCutNum++);
+			/* Add the row in the solver */
+			if ( addRow(cell->master->lp, prob->num->prevCols + 2, alpha, GE, 0, indices, beta, cutName) ) {
+				errMsg("solver", "addcut2Master", "failed to add new row to problem in solver", 0);
+				return -1;
+			}
 		}
 		mem_free(beta);
-	}
+	}//END of \xi loop
+
+	if ( piS ) mem_free(piS);
+	if ( indices ) mem_free(indices);
 	return 0;
+
 	TERMINATE:
 	if ( piS ) mem_free(piS);
-	if ( spObj ) mem_free(spObj);
-	if ( alpha) mem_free(alpha);
-	if ( beta ) {
-		for ( obs = 0; obs < cell->omega->numObs; obs++ ) {
-			if (beta[obs]) mem_free(beta[obs]);
-		}
-		mem_free(beta);
-	}
+	if ( indices ) mem_free(indices);
 	return 1;
+
 }//END formReformCuts()

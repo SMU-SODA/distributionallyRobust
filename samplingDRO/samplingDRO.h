@@ -17,7 +17,7 @@
 #include "smps.h"
 #include "prob.h"
 
-#define DEBUG
+#undef DEBUG
 #if defined(DEBUG)
 #undef SETUP_CHECK
 #undef SEP_CHECK
@@ -271,9 +271,13 @@ void printEvaluationSummary(FILE *soln, double mean, double stdev, int cnt);
 void writeEvaluationStatistics(FILE *soln, double mean, double stdev, int cnt);
 
 /* reform.c */
-int solveReformulation(stocType *stoc, probType **prob, cellType **cell);
+int solveReformulation(stocType *stoc, probType **prob, cellType *cell);
 oneProblem *setupMomentMatchReform (probType **prob, omegaType *omega);
 oneProblem *setupWassersteinOneReform (probType **prob, omegaType *omega);
 oneProblem *setupWassersteinInfReform (probType **prob, omegaType *omega);
+
+/* reformDecompose.c */
+int solveReformDecompose(stocType *stoc, probType **prob, cellType *cell);
+int formReformCuts(probType *prob, cellType *cell, dVector Xvect);
 
 #endif /* SAMPLINGDRO_H_ */
