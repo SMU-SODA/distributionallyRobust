@@ -356,13 +356,11 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 	if (cell->cuts) freeCutsType(cell->cuts, true);
 
 	/* stochastic components */
-	if ( config.ALGO_TYPE != SD ) {
-		if (cell->omega) freeOmegaType(cell->omega, true);
-		if ( config.ALGO_TYPE == REFORM ) {
-			if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->numObs, true);
-			if (cell->lambda) freeLambdaType(cell->lambda, true);
-			if (cell->sigma) freeSigmaType(cell->sigma, true);
-		}
+	if (cell->omega) freeOmegaType(cell->omega, true);
+	if ( config.ALGO_TYPE == SD ) {
+		if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->numObs, true);
+		if (cell->lambda) freeLambdaType(cell->lambda, true);
+		if (cell->sigma) freeSigmaType(cell->sigma, true);
 	}
 
 	/* reset all the clocks */

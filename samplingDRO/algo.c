@@ -126,8 +126,7 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 
 		/* Free the distribution separation problem */
 		if (cell->sep) freeOneProblem(cell->sep);
-		if (cell->spIdx) mem_free(cell->spIdx);
-		cell->sep = NULL; cell->spIdx = NULL;
+		cell->sep = NULL;
 	}
 	printf("\n\nSuccessfully completed executing the algorithm.\n");
 
