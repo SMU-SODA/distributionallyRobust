@@ -28,7 +28,7 @@ CUT_MULT  3
 
 // ******************** Replicated experiments ********************
 // Number of replications.
-MULTIPLE_REP 3
+MULTIPLE_REP 30
 
 // Run seeds
 RUN_SEED    8879657642464524

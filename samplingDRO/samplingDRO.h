@@ -17,11 +17,11 @@
 #include "smps.h"
 #include "prob.h"
 
-#undef DEBUG
+#define DEBUG
 #if defined(DEBUG)
-#undef SETUP_CHECK
+#define SETUP_CHECK
 #undef SEP_CHECK
-#define ALGO_CHECK
+#undef ALGO_CHECK
 #undef STOCH_CHECK
 #undef CUT_CHECK
 #undef EVAL_CHECK

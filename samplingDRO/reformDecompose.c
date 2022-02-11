@@ -116,6 +116,7 @@ int formReformCuts(probType *prob, cellType *cell, dVector Xvect) {
 				errMsg("solver", "addcut2Master", "failed to add new row to problem in solver", 0);
 				return -1;
 			}
+			cell->cuts->cnt++;
 		}
 		mem_free(beta);
 	}//END of \xi loop

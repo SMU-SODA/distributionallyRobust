@@ -379,14 +379,14 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 		}
 
 		cell->incumbChg = false;
+	}
 
 #if defined(SETUP_CHECK)
-		if ( writeProblem(cell->master->lp, "cleanedQPMaster.lp") ) {
+		if ( writeProblem(cell->master->lp, "cleanedMaster.lp") ) {
 			errMsg("write problem", "new_master", "failed to write master problem to file",0);
 			return 1;
 		}
 #endif
-	}
 
 	return 0;
 }//END cleanCellType()
