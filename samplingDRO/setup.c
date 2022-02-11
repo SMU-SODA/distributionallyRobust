@@ -327,33 +327,18 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 	copyVector(xk, cell->candidX, prob->num->cols+1);
 	cell->candidEst	= prob->lb + vXvSparse(cell->candidX, prob->dBar);
 
-	if (config.MASTER_TYPE == PROB_QP) {
-		copyVector(xk, cell->incumbX, prob->num->cols+1);
-		cell->incumbEst = cell->candidEst;
-		cell->quadScalar= config.MIN_QUAD_SCALAR;
+	if ( config.ALGO_TYPE != REFORM ) {
+		/* Master oneProblem structures and solver elements */
+		for ( cnt = prob->num->rows+cell->cuts->cnt-1; cnt >= prob->num->rows; cnt-- )
+			if (  removeRow(cell->master->lp, cnt, cnt) ) {
+				errMsg("solver", "cleanCellType", "failed to remove a row from master problem", 0);
+				return 1;
+			}
+		cell->master->mar = prob->num->rows;
 
-		cell->iCutIdx = 0;
-
-		cell->incumbChg = true;
+		/* cuts */
+		if (cell->cuts) freeCutsType(cell->cuts, true);
 	}
-
-	/* Master oneProblem structures and solver elements */
-	for ( cnt = prob->num->rows+cell->cuts->cnt-1; cnt >= prob->num->rows; cnt-- )
-		if (  removeRow(cell->master->lp, cnt, cnt) ) {
-			errMsg("solver", "cleanCellType", "failed to remove a row from master problem", 0);
-			return 1;
-		}
-	cell->master->mar = prob->num->rows;
-
-	if ( config.MASTER_TYPE == PROB_QP ) {
-		if( changeQPproximal(cell->master->lp, prob->num->cols, cell->quadScalar, 0)) {
-			errMsg("algorithm", "cleanCellType", "failed to change the proximal term", 0);
-			return 1;
-		}
-	}
-
-	/* cuts */
-	if (cell->cuts) freeCutsType(cell->cuts, true);
 
 	/* stochastic components */
 	if ( config.ALGO_TYPE != SD ) {
@@ -365,16 +350,20 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 		}
 	}
 
-	/* reset all the clocks */
-	cell->time->repTime = 0.0;
-	cell->time->iterTime = cell->time->iterAccumTime = 0.0;
-	cell->time->masterIter = cell->time->masterAccumTime = 0.0;
-	cell->time->subprobIter = cell->time->subprobAccumTime = 0.0;
-	cell->time->optTestIter = cell->time->optTestAccumTime = 0.0;
-	cell->time->argmaxIter = cell->time->argmaxAccumTime = 0.0;
-	cell->time->distSepTime = 0.0;
-
 	if ( config.MASTER_TYPE == PROB_QP ) {
+		copyVector(xk, cell->incumbX, prob->num->cols+1);
+		cell->incumbEst = cell->candidEst;
+		cell->quadScalar= config.MIN_QUAD_SCALAR;
+
+		cell->iCutIdx = 0;
+
+		cell->incumbChg = true;
+
+		if( changeQPproximal(cell->master->lp, prob->num->cols, cell->quadScalar, 0)) {
+			errMsg("algorithm", "cleanCellType", "failed to change the proximal term", 0);
+			return 1;
+		}
+
 		if ( constructQP(prob, cell, cell->incumbX, cell->quadScalar) ) {
 			errMsg("setup", "newCell", "failed to change the right-hand side after incumbent change", 0);
 			return 1;
@@ -389,6 +378,15 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 		}
 #endif
 	}
+
+	/* reset all the clocks */
+	cell->time->repTime = 0.0;
+	cell->time->iterTime = cell->time->iterAccumTime = 0.0;
+	cell->time->masterIter = cell->time->masterAccumTime = 0.0;
+	cell->time->subprobIter = cell->time->subprobAccumTime = 0.0;
+	cell->time->optTestIter = cell->time->optTestAccumTime = 0.0;
+	cell->time->argmaxIter = cell->time->argmaxAccumTime = 0.0;
+	cell->time->distSepTime = 0.0;
 
 	return 0;
 }//END cleanCellType()
