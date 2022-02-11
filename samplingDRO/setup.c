@@ -341,13 +341,11 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 	}
 
 	/* stochastic components */
-	if ( config.ALGO_TYPE != SD ) {
-		if (cell->omega) freeOmegaType(cell->omega, true);
-		if ( config.ALGO_TYPE == REFORM ) {
-			if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->numObs, true);
-			if (cell->lambda) freeLambdaType(cell->lambda, true);
-			if (cell->sigma) freeSigmaType(cell->sigma, true);
-		}
+	if (cell->omega) freeOmegaType(cell->omega, true);
+	if ( config.ALGO_TYPE == SD ) {
+		if (cell->delta) freeDeltaType(cell->delta, cell->lambda->cnt, cell->omega->numObs, true);
+		if (cell->lambda) freeLambdaType(cell->lambda, true);
+		if (cell->sigma) freeSigmaType(cell->sigma, true);
 	}
 
 	if ( config.MASTER_TYPE == PROB_QP ) {
@@ -370,14 +368,14 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 		}
 
 		cell->incumbChg = false;
+	}
 
 #if defined(SETUP_CHECK)
-		if ( writeProblem(cell->master->lp, "cleanedQPMaster.lp") ) {
+		if ( writeProblem(cell->master->lp, "cleanedMaster.lp") ) {
 			errMsg("write problem", "new_master", "failed to write master problem to file",0);
 			return 1;
 		}
 #endif
-	}
 
 	/* reset all the clocks */
 	cell->time->repTime = 0.0;
