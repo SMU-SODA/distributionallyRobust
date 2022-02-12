@@ -329,11 +329,10 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 
 	if ( config.ALGO_TYPE != REFORM ) {
 		/* Master oneProblem structures and solver elements */
-		for ( cnt = prob->num->rows+cell->cuts->cnt-1; cnt >= prob->num->rows; cnt-- )
-			if (  removeRow(cell->master->lp, cnt, cnt) ) {
-				errMsg("solver", "cleanCellType", "failed to remove a row from master problem", 0);
-				return 1;
-			}
+		if (  removeRow(cell->master->lp, prob->num->rows, prob->num->rows+cell->cuts->cnt-1) ) {
+			errMsg("solver", "cleanCellType", "failed to remove a row from master problem", 0);
+			return 1;
+		}
 		cell->master->mar = prob->num->rows;
 
 		/* cuts */
@@ -371,10 +370,10 @@ int cleanCellType(cellType *cell, probType *prob, dVector xk) {
 	}
 
 #if defined(SETUP_CHECK)
-		if ( writeProblem(cell->master->lp, "cleanedMaster.lp") ) {
-			errMsg("write problem", "new_master", "failed to write master problem to file",0);
-			return 1;
-		}
+	if ( writeProblem(cell->master->lp, "cleanedMaster.lp") ) {
+		errMsg("write problem", "new_master", "failed to write master problem to file",0);
+		return 1;
+	}
 #endif
 
 	/* reset all the clocks */
