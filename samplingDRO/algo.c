@@ -60,11 +60,13 @@ int algo(oneProblem *orig, timeType *tim, stocType *stoc, cString inputDir, cStr
 				goto TERMINATE;
 			}
 
-			/* Shift the observations to center around their means. */
-			for ( int obs = 0; obs < cell->omega->numObs; obs++ ) {
-				for ( int m = 1; m <= cell->omega->numOmega; m++ ) {
-					cell->omega->vals[obs][m] -= stoc->mean[m-1];
-					cell->omega->vals[obs][0] += cell->omega->vals[obs][m];
+			if ( config.ALGO_TYPE != L_SHAPED ) {
+				/* Shift the observations to center around their means. */
+				for ( int obs = 0; obs < cell->omega->numObs; obs++ ) {
+					for ( int m = 1; m <= cell->omega->numOmega; m++ ) {
+						cell->omega->vals[obs][m] -= stoc->mean[m-1];
+						cell->omega->vals[obs][0] += cell->omega->vals[obs][m];
+					}
 				}
 			}
 		}
